@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { createHttpClient, HttpClient } from '../utils/http';
 import { Config } from '../config/config';
 
 export interface CoolifyServer {
@@ -45,7 +45,7 @@ export interface CoolifyResource {
 }
 
 export class CoolifyAPI {
-  private client: any;
+  private client: HttpClient;
   private baseUrl: string;
 
   constructor(config: Config) {
@@ -60,7 +60,7 @@ export class CoolifyAPI {
       headers['Authorization'] = `Bearer ${config.coolifyApiToken}`;
     }
 
-    this.client = axios.create({
+    this.client = createHttpClient({
       baseURL: `${this.baseUrl}/api/v1`,
       headers,
       timeout: 30000,
@@ -69,8 +69,8 @@ export class CoolifyAPI {
 
   async testConnection(): Promise<boolean> {
     try {
-      const response = await this.client.get('/servers');
-      return response.status === 200;
+      await this.client.get('/servers');
+      return true;
     } catch (error) {
       return false;
     }
@@ -78,8 +78,8 @@ export class CoolifyAPI {
 
   async getServers(): Promise<CoolifyServer[]> {
     try {
-      const response = await this.client.get('/servers');
-      return response.data.data || response.data || [];
+      const response = await this.client.get<{ data?: CoolifyServer[] } | CoolifyServer[]>('/servers');
+      return Array.isArray(response) ? response : (response as any).data || [];
     } catch (error) {
       this.handleError(error);
       throw error;
@@ -88,8 +88,8 @@ export class CoolifyAPI {
 
   async getApplications(): Promise<CoolifyApplication[]> {
     try {
-      const response = await this.client.get('/applications');
-      return response.data.data || response.data || [];
+      const response = await this.client.get<{ data?: CoolifyApplication[] } | CoolifyApplication[]>('/applications');
+      return Array.isArray(response) ? response : (response as any).data || [];
     } catch (error) {
       this.handleError(error);
       throw error;
@@ -98,8 +98,8 @@ export class CoolifyAPI {
 
   async getServices(): Promise<CoolifyService[]> {
     try {
-      const response = await this.client.get('/services');
-      return response.data.data || response.data || [];
+      const response = await this.client.get<{ data?: CoolifyService[] } | CoolifyService[]>('/services');
+      return Array.isArray(response) ? response : (response as any).data || [];
     } catch (error) {
       this.handleError(error);
       throw error;
@@ -108,8 +108,8 @@ export class CoolifyAPI {
 
   async getProjects(): Promise<any[]> {
     try {
-      const response = await this.client.get('/projects');
-      return response.data.data || response.data || [];
+      const response = await this.client.get<{ data?: any[] } | any[]>('/projects');
+      return Array.isArray(response) ? response : (response as any).data || [];
     } catch (error) {
       this.handleError(error);
       throw error;
@@ -119,7 +119,7 @@ export class CoolifyAPI {
   async getProjectById(projectId: string): Promise<any> {
     try {
       const response = await this.client.get(`/projects/${projectId}`);
-      return response.data;
+      return response;
     } catch (error) {
       this.handleError(error);
       throw error;
@@ -128,8 +128,8 @@ export class CoolifyAPI {
 
   async getEnvironments(projectId: string): Promise<any[]> {
     try {
-      const response = await this.client.get(`/projects/${projectId}/environments`);
-      return response.data.data || response.data || [];
+      const response = await this.client.get<{ data?: any[] } | any[]>(`/projects/${projectId}/environments`);
+      return Array.isArray(response) ? response : (response as any).data || [];
     } catch (error) {
       this.handleError(error);
       throw error;
@@ -139,7 +139,7 @@ export class CoolifyAPI {
   async getResourcesByEnvironment(projectId: string, environmentName: string): Promise<any> {
     try {
       const response = await this.client.get(`/projects/${projectId}/${environmentName}`);
-      return response.data;
+      return response;
     } catch (error) {
       this.handleError(error);
       throw error;
@@ -253,18 +253,9 @@ export class CoolifyAPI {
   }
 
   private handleError(error: any): void {
-    if (error && (error as any).response) {
-      const axiosError = error as any;
-      if (axiosError.response) {
-        const data: any = axiosError.response.data;
-        if (data.message) {
-          throw new Error(`Coolify API Error: ${data.message}`);
-        }
-        throw new Error(`Coolify API Error: ${axiosError.response.status} - ${axiosError.response.statusText}`);
-      } else if (axiosError.request) {
-        throw new Error('No response from Coolify API. Please check your connection and Coolify URL.');
-      }
+    if (error instanceof Error) {
+      throw error;
     }
-    throw error;
+    throw new Error('Unknown error occurred while calling Coolify API');
   }
 }

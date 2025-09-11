@@ -1,8 +1,16 @@
-# Dreamsflare CLI v1.1.0
+# Dreamsflare CLI v1.2.0
 
-A **secure** and powerful CLI tool to find all domains using a specific IP address across Cloudflare DNS and Coolify deployments.
+A **modern**, **secure**, and **blazing-fast** CLI tool to find all domains using a specific IP address across Cloudflare DNS and Coolify deployments.
 
-## 🔐 Security Features (New in v1.1.0)
+## ⚡ Performance & Modern Stack (New in v1.2.0)
+
+- **Native Fetch API**: Replaced Axios with native Node.js fetch for zero external HTTP dependencies
+- **Node.js 18+ Required**: Leveraging modern JavaScript features
+- **ES2023 Target**: Using latest TypeScript compilation target
+- **Optimized Bundle**: Reduced runtime dependencies from 10 to 5 packages
+- **Faster Execution**: Native APIs provide better performance
+
+## 🔐 Security Features (v1.1.0)
 
 - **Encrypted Credential Storage**: API tokens are encrypted using AES-256 encryption
 - **Machine-Specific Encryption**: Each machine uses a unique encryption key
@@ -12,14 +20,16 @@ A **secure** and powerful CLI tool to find all domains using a specific IP addre
 
 ## Features
 
+- ⚡ **Lightning Fast**: Native fetch API with zero external HTTP dependencies (v1.2.0)
 - 🔍 **Dual Service Search**: Find domains in both Cloudflare DNS and Coolify
-- 🔐 **Secure API Management**: Support for API tokens with read-only access
+- 🔐 **Military-Grade Security**: AES-256 encrypted credential storage
 - 📊 **Multiple Output Formats**: JSON, CSV, simple lists, or formatted display
 - 🎯 **Combined Search**: Search both services simultaneously with `all` command
-- 📁 **Flexible Configuration**: Environment variables, .env files, or config files
+- 📁 **Flexible Configuration**: Environment variables, .env files, or encrypted config
 - 🎨 **Beautiful CLI Output**: Colored output with progress indicators
 - 💾 **Export Options**: Save results to files in any format
 - 📈 **CSV Export**: Perfect for Google Sheets/Excel reports
+- 🚀 **Modern Stack**: Node.js 18+, TypeScript 5.x, ES2023 target
 
 ## Quick Start
 
@@ -43,6 +53,12 @@ git clone https://github.com/yourusername/dreamsflare.git
 cd dreamsflare
 npm install && npm run build && npm link
 ```
+
+## Prerequisites
+
+- **Node.js 18.0.0 or higher** (Required for native fetch API)
+- npm or yarn
+- Git
 
 ## Installation
 
@@ -319,10 +335,11 @@ npm start ip 104.26.2.33
 
 ### Technologies Used
 
-- **Node.js** & **TypeScript** - For a type-safe, modern development experience
+- **Node.js 18+** & **TypeScript 5.x** - Modern JavaScript with native fetch API
 - **Commander.js** - Elegant command-line interface framework
-- **Axios** - Reliable HTTP client for API requests
+- **Native Fetch** - Zero-dependency HTTP client using Node.js built-in fetch
 - **Chalk** & **Ora** - Beautiful terminal output and spinners
+- **Crypto-JS** - AES-256 encryption for secure credential storage
 
 ## Troubleshooting
 
@@ -351,13 +368,45 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## Roadmap
 
+### v1.3.0 (Coming Soon)
+- [ ] **Hetzner Cloud Integration** - Search servers and load balancers by IP
+- [ ] **DigitalOcean Integration** - Find droplets and resources by IP
+- [ ] Unified search across all cloud providers
+- [ ] Provider-specific authentication methods
+
+### Future Releases
+- [ ] AWS Route53 support
+- [ ] Google Cloud DNS integration
+- [ ] Azure DNS support
 - [ ] Publish to NPM registry
 - [ ] Create Homebrew formula
-- [ ] Add support for more DNS providers
 - [ ] Add reverse lookup (domain to IP)
 - [ ] Interactive mode with prompts
 - [ ] Batch IP processing from file
 - [ ] Web dashboard (optional)
+
+## Version History
+
+### v1.2.0 (Current)
+- ⚡ Replaced Axios with native fetch API (Node.js 18+)
+- 📦 Reduced dependencies from 10 to 5 packages
+- 🚀 Modernized to ES2023 and TypeScript 5.x
+- 🔧 Optimized bundle size and performance
+- ✨ Zero external HTTP dependencies
+
+### v1.1.0
+- 🔐 AES-256 encryption for credential storage
+- 🔑 Machine-specific encryption keys
+- ✅ Integrity verification with checksums
+- 🔄 Automatic migration from plain text
+- 👁️ Token masking in CLI output
+
+### v1.0.0
+- 🔍 Initial release with Cloudflare DNS search
+- 🎯 Coolify integration for deployment search
+- 📊 Multiple output formats (JSON, CSV, simple)
+- 🎨 Beautiful CLI with colors and progress indicators
+- 📁 Flexible configuration options
 
 ## License
 

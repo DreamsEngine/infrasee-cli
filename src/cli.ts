@@ -3,7 +3,7 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { loadConfig, validateConfig, validateCoolifyConfig } from './config/config';
+import { loadConfig, validateConfig, validateCoolifyConfig, saveSecureConfig } from './config/config';
 import { CloudflareAPI } from './api/cloudflare';
 import { CoolifyAPI } from './api/coolify';
 import { isValidIP } from './utils/validation';
@@ -20,7 +20,7 @@ const program = new Command();
 program
   .name('dreamsflare')
   .description('CLI tool to find all domains using a specific IP address via Cloudflare API')
-  .version('1.0.0');
+  .version('1.2.0');
 
 program
   .command('ip')
@@ -237,10 +237,10 @@ coolifyCommand
         process.exit(1);
       }
 
-      // Save configuration
-      writeFileSync(configPath, JSON.stringify(existingConfig, null, 2));
-      spinner.succeed('Coolify configuration saved successfully');
-      displayInfo(`Config saved to: ${configPath}`);
+      // Save configuration with encryption
+      saveSecureConfig(existingConfig);
+      spinner.succeed('Coolify configuration saved successfully with encryption');
+      displayInfo(`Encrypted config saved to: ${configPath}`);
 
     } catch (error) {
       displayError((error as Error).message);
@@ -503,10 +503,10 @@ program
         process.exit(1);
       }
 
-      // Save configuration
-      writeFileSync(configPath, JSON.stringify(config, null, 2));
-      spinner.succeed('Configuration saved successfully');
-      displayInfo(`Config saved to: ${configPath}`);
+      // Save configuration with encryption
+      saveSecureConfig(config);
+      spinner.succeed('Configuration saved successfully with encryption');
+      displayInfo(`Encrypted config saved to: ${configPath}`);
 
     } catch (error) {
       displayError((error as Error).message);

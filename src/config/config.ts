@@ -25,9 +25,37 @@ function encryptData(text: string): string {
 // Decrypt sensitive data
 function decryptData(encryptedText: string): string {
   try {
-    const bytes = CryptoJS.AES.decrypt(encryptedText, getMachineKey());
-    return bytes.toString(CryptoJS.enc.Utf8);
-  } catch {
+    const key = getMachineKey();
+    const bytes = CryptoJS.AES.decrypt(encryptedText, key);
+    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+    
+    // Check if decryption was successful
+    if (!decrypted || decrypted.length === 0) {
+      if (process.env.DEBUG_DECRYPT) {
+        console.error('Decryption failed: empty result');
+        console.error('Key used:', key.substring(0, 8) + '...');
+      }
+      return encryptedText;
+    }
+    
+    // Check if the result looks like it's still encrypted (double encryption issue)
+    if (decrypted.startsWith('U2FsdGVkX1')) {
+      if (process.env.DEBUG_DECRYPT) {
+        console.error('Warning: Decrypted value appears to be encrypted again (double encryption)');
+      }
+      // Try to decrypt again
+      const bytes2 = CryptoJS.AES.decrypt(decrypted, key);
+      const decrypted2 = bytes2.toString(CryptoJS.enc.Utf8);
+      if (decrypted2 && decrypted2.length > 0) {
+        return decrypted2;
+      }
+    }
+    
+    return decrypted;
+  } catch (error) {
+    if (process.env.DEBUG_DECRYPT) {
+      console.error('Decryption error:', error);
+    }
     // If decryption fails, return as-is (backward compatibility)
     return encryptedText;
   }
@@ -110,28 +138,66 @@ export function saveSecureConfig(config: Config): void {
     mkdirSync(configDir, { recursive: true, mode: 0o700 });
   }
   
+  // Load existing config to merge values
+  let existingConfig: any = {};
+  if (existsSync(configPath)) {
+    try {
+      const fileContent = readFileSync(configPath, 'utf-8');
+      existingConfig = JSON.parse(fileContent);
+    } catch {
+      // Invalid config, start fresh
+    }
+  }
+  
   // Prepare encrypted config
   const secureConfig: any = {
     encrypted: true,
-    version: '1.1.0',
+    version: '1.2.0',
     timestamp: new Date().toISOString()
   };
   
-  // Encrypt sensitive fields
+  // Helper function to check if a value is already encrypted
+  const isEncrypted = (value: string): boolean => {
+    return !!(value && value.startsWith('U2FsdGVkX1'));
+  };
+  
+  // Encrypt sensitive fields (only if not already encrypted)
   if (config.cloudflareApiToken) {
-    secureConfig.cloudflareApiToken = encryptData(config.cloudflareApiToken);
+    secureConfig.cloudflareApiToken = isEncrypted(config.cloudflareApiToken) 
+      ? config.cloudflareApiToken 
+      : encryptData(config.cloudflareApiToken);
+  } else if (existingConfig.cloudflareApiToken) {
+    secureConfig.cloudflareApiToken = existingConfig.cloudflareApiToken;
   }
+  
   if (config.cloudflareEmail) {
-    secureConfig.cloudflareEmail = encryptData(config.cloudflareEmail);
+    secureConfig.cloudflareEmail = isEncrypted(config.cloudflareEmail)
+      ? config.cloudflareEmail
+      : encryptData(config.cloudflareEmail);
+  } else if (existingConfig.cloudflareEmail) {
+    secureConfig.cloudflareEmail = existingConfig.cloudflareEmail;
   }
+  
   if (config.cloudflareApiKey) {
-    secureConfig.cloudflareApiKey = encryptData(config.cloudflareApiKey);
+    secureConfig.cloudflareApiKey = isEncrypted(config.cloudflareApiKey)
+      ? config.cloudflareApiKey
+      : encryptData(config.cloudflareApiKey);
+  } else if (existingConfig.cloudflareApiKey) {
+    secureConfig.cloudflareApiKey = existingConfig.cloudflareApiKey;
   }
+  
   if (config.coolifyApiToken) {
-    secureConfig.coolifyApiToken = encryptData(config.coolifyApiToken);
+    secureConfig.coolifyApiToken = isEncrypted(config.coolifyApiToken)
+      ? config.coolifyApiToken
+      : encryptData(config.coolifyApiToken);
+  } else if (existingConfig.coolifyApiToken) {
+    secureConfig.coolifyApiToken = existingConfig.coolifyApiToken;
   }
+  
   if (config.coolifyUrl) {
     secureConfig.coolifyUrl = config.coolifyUrl; // URL doesn't need encryption
+  } else if (existingConfig.coolifyUrl) {
+    secureConfig.coolifyUrl = existingConfig.coolifyUrl;
   }
   
   // Write with restricted permissions

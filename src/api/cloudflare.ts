@@ -1,4 +1,4 @@
-import axios from 'axios';
+import { createHttpClient, HttpClient } from '../utils/http';
 import { Config } from '../config/config';
 
 export interface Zone {
@@ -25,7 +25,7 @@ export interface DNSRecord {
 }
 
 export class CloudflareAPI {
-  private client: any;
+  private client: HttpClient;
 
   constructor(config: Config) {
     
@@ -40,7 +40,7 @@ export class CloudflareAPI {
       headers['X-Auth-Key'] = config.cloudflareApiKey;
     }
 
-    this.client = axios.create({
+    this.client = createHttpClient({
       baseURL: 'https://api.cloudflare.com/client/v4',
       headers,
       timeout: 30000,
@@ -49,16 +49,16 @@ export class CloudflareAPI {
 
   async testConnection(): Promise<boolean> {
     try {
-      const response = await this.client.get('/user/tokens/verify');
-      return response.data.success === true;
+      const response = await this.client.get<{ success: boolean }>('/user/tokens/verify');
+      return response.success === true;
     } catch (error) {
       if (error && (error as any).response?.status === 400) {
         // Try zones endpoint for API key auth
         try {
-          const zonesResponse = await this.client.get('/zones', {
+          const zonesResponse = await this.client.get<{ success: boolean }>('/zones', {
             params: { per_page: 1 }
           });
-          return zonesResponse.data.success === true;
+          return zonesResponse.success === true;
         } catch {
           return false;
         }
@@ -69,20 +69,24 @@ export class CloudflareAPI {
 
   async getZones(page = 1, perPage = 50): Promise<{ zones: Zone[], totalPages: number }> {
     try {
-      const response = await this.client.get('/zones', {
+      const response = await this.client.get<{
+        success: boolean;
+        result: Zone[];
+        result_info: { total_pages: number };
+      }>('/zones', {
         params: {
           page,
           per_page: perPage,
         },
       });
 
-      if (!response.data.success) {
+      if (!response.success) {
         throw new Error('Failed to fetch zones');
       }
 
       return {
-        zones: response.data.result,
-        totalPages: response.data.result_info.total_pages,
+        zones: response.result,
+        totalPages: response.result_info.total_pages,
       };
     } catch (error) {
       this.handleError(error);
@@ -92,20 +96,24 @@ export class CloudflareAPI {
 
   async getDNSRecords(zoneId: string, page = 1, perPage = 100): Promise<{ records: DNSRecord[], totalPages: number }> {
     try {
-      const response = await this.client.get(`/zones/${zoneId}/dns_records`, {
+      const response = await this.client.get<{
+        success: boolean;
+        result: DNSRecord[];
+        result_info: { total_pages: number };
+      }>(`/zones/${zoneId}/dns_records`, {
         params: {
           page,
           per_page: perPage,
         },
       });
 
-      if (!response.data.success) {
+      if (!response.success) {
         throw new Error('Failed to fetch DNS records');
       }
 
       return {
-        records: response.data.result,
-        totalPages: response.data.result_info.total_pages,
+        records: response.result,
+        totalPages: response.result_info.total_pages,
       };
     } catch (error) {
       this.handleError(error);
@@ -162,18 +170,9 @@ export class CloudflareAPI {
   }
 
   private handleError(error: any): void {
-    if (error && (error as any).response) {
-      const axiosError = error as any;
-      if (axiosError.response) {
-        const data: any = axiosError.response.data;
-        if (data.errors && Array.isArray(data.errors) && data.errors.length > 0) {
-          throw new Error(`Cloudflare API Error: ${data.errors[0].message}`);
-        }
-        throw new Error(`Cloudflare API Error: ${axiosError.response.status} - ${axiosError.response.statusText}`);
-      } else if (axiosError.request) {
-        throw new Error('No response from Cloudflare API. Please check your internet connection.');
-      }
+    if (error instanceof Error) {
+      throw error;
     }
-    throw error;
+    throw new Error('Unknown error occurred while calling Cloudflare API');
   }
 }
