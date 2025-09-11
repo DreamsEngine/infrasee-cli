@@ -1,6 +1,14 @@
-# Dreamsflare CLI
+# Dreamsflare CLI v1.1.0
 
-A powerful CLI tool to find all domains using a specific IP address across Cloudflare DNS and Coolify deployments.
+A **secure** and powerful CLI tool to find all domains using a specific IP address across Cloudflare DNS and Coolify deployments.
+
+## 🔐 Security Features (New in v1.1.0)
+
+- **Encrypted Credential Storage**: API tokens are encrypted using AES-256 encryption
+- **Machine-Specific Encryption**: Each machine uses a unique encryption key
+- **Secure File Permissions**: Config files are saved with restricted permissions (0600)
+- **Token Masking**: Sensitive data is masked when displayed
+- **Backward Compatibility**: Automatic migration from plain text to encrypted storage
 
 ## Features
 
@@ -230,10 +238,26 @@ dreamsflare all --help
 
 ## Security Best Practices
 
+### Credential Security (v1.1.0+)
+
+1. **Automatic Encryption**: All stored credentials are automatically encrypted
+2. **Machine-Specific Keys**: Encryption keys are unique to each machine
+3. **Secure Storage Location**: `~/.dreamsflare/config.json` with 0600 permissions
+4. **Token Masking**: Tokens are masked when displayed (e.g., `CEB***-d`)
+
+### General Security
+
 1. **Use API Tokens instead of Global API Keys** - Tokens can be scoped with minimal permissions
 2. **Never commit credentials** - Use environment variables or .env files (which are gitignored)
 3. **Rotate credentials regularly** - Update your tokens/keys periodically
-4. **Use read-only permissions** - This tool only needs read access to zones and DNS records
+4. **Use read-only permissions** - This tool only needs read access
+5. **Keep the tool updated** - Regular updates include security improvements
+
+### Encrypted vs Plain Text Storage
+
+- **v1.1.0+**: Credentials are encrypted by default
+- **v1.0.x**: Plain text storage (legacy)
+- **Migration**: Automatic when you run any command with v1.1.0+
 
 ## Output Examples
 
