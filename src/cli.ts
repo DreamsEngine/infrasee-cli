@@ -307,8 +307,34 @@ allCommand
 
     if (!hasCloudflare && !hasCoolify) {
       displayError('No valid credentials found for either Cloudflare or Coolify.');
-      console.log(chalk.yellow('\nPlease configure at least one service.'));
+      console.log(chalk.yellow('\nPlease configure at least one service:'));
+      console.log(chalk.cyan('\nFor Cloudflare:'));
+      console.log('  1. Set environment variable: CLOUDFLARE_API_TOKEN=your_token');
+      console.log('  2. Or run: dreamsflare config --token your_cloudflare_token');
+      console.log(chalk.cyan('\nFor Coolify:'));
+      console.log('  1. Set environment variables:');
+      console.log('     COOLIFY_API_TOKEN=your_token');
+      console.log('     COOLIFY_URL=https://your-coolify-instance.com');
+      console.log('  2. Or run: dreamsflare coolify config --token your_coolify_token --url https://your-coolify.com');
       process.exit(1);
+    }
+
+    // Show which services are configured
+    if (!hasCloudflare || !hasCoolify) {
+      console.log(chalk.yellow('\n⚠ Warning: Not all services are configured'));
+      if (!hasCloudflare) {
+        console.log(chalk.gray('  • Cloudflare: Not configured (skipping)'));
+        console.log(chalk.gray('    To configure: dreamsflare config --token your_token'));
+      } else {
+        console.log(chalk.green('  • Cloudflare: ✓ Configured'));
+      }
+      if (!hasCoolify) {
+        console.log(chalk.gray('  • Coolify: Not configured (skipping)'));
+        console.log(chalk.gray('    To configure: dreamsflare coolify config --token your_token'));
+      } else {
+        console.log(chalk.green('  • Coolify: ✓ Configured'));
+      }
+      console.log('');
     }
 
     const spinner = ora('Searching for domains...').start();

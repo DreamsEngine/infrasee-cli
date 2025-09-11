@@ -136,10 +136,10 @@ COOLIFY_URL=https://your-coolify-instance.com
 
 ```bash
 # Configure Cloudflare
-dreamsflare config --token your_api_token_here
+dreamsflare config --token "your_api_token_here"
 
-# Configure Coolify
-dreamsflare coolify config --token your_coolify_token --url https://your-coolify.com
+# Configure Coolify (note: always quote tokens with special characters like |)
+dreamsflare coolify config --token "your_coolify_token" --url https://your-coolify.com
 ```
 
 Credentials are saved securely in `~/.dreamsflare/config.json`
@@ -299,6 +299,27 @@ npm start ip 104.26.2.33
 - **Commander.js** - Elegant command-line interface framework
 - **Axios** - Reliable HTTP client for API requests
 - **Chalk** & **Ora** - Beautiful terminal output and spinners
+
+## Troubleshooting
+
+### Token with Special Characters
+
+If your API token contains special characters like `|`, `&`, or `$`, always wrap it in quotes:
+
+```bash
+# ❌ Wrong - shell will interpret the pipe character
+dreamsflare coolify config --token 1|abc123xyz
+
+# ✅ Correct - token is properly quoted
+dreamsflare coolify config --token "1|abc123xyz"
+```
+
+### Common Issues
+
+1. **"Command not found"** - Run `npm link` again from the project directory
+2. **"No credentials found"** - Check your `.env` file or run the config commands
+3. **Fish shell pipe error** - Quote your tokens as shown above
+4. **Permission denied** - Some installation methods may require `sudo`
 
 ## Contributing
 

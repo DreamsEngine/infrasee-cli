@@ -3,7 +3,9 @@ import { readFileSync, existsSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 
-dotenv.config();
+// Load .env file quietly
+process.env.SUPPRESS_NO_CONFIG_WARNING = 'true';
+dotenv.config({ silent: true, quiet: true } as any);
 
 export interface Config {
   cloudflareApiToken?: string;
