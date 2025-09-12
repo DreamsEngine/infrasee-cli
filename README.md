@@ -35,7 +35,7 @@ A **modern**, **secure**, and **blazing-fast** CLI tool to find all domains and 
 
 ```bash
 # Clone and install with one command
-git clone https://github.com/DreamsEngine/infrasee-cli.git
+git clone https://github.com/yourusername/infrasee-cli.git
 cd infrasee-cli
 ./install.sh
 
@@ -50,7 +50,7 @@ infrasee all ip 192.168.1.100 --csv --output report.csv
 
 Or manually:
 ```bash
-git clone https://github.com/DreamsEngine/infrasee-cli.git
+git clone https://github.com/yourusername/infrasee-cli.git
 cd infrasee-cli
 npm install && npm run build && npm link
 ```
@@ -67,7 +67,7 @@ npm install && npm run build && npm link
 
 ```bash
 # Clone the repository
-git clone https://github.com/DreamsEngine/infrasee-cli.git
+git clone https://github.com/yourusername/infrasee-cli.git
 cd infrasee-cli
 
 # Install dependencies
@@ -84,7 +84,7 @@ npm link
 
 ```bash
 # Clone and build
-git clone https://github.com/DreamsEngine/infrasee-cli.git
+git clone https://github.com/yourusername/infrasee-cli.git
 cd infrasee-cli
 npm install && npm run build
 
@@ -101,7 +101,7 @@ sudo mv infrasee-cli /usr/local/bin/infrasee
 
 ```bash
 # Clone and build
-git clone https://github.com/DreamsEngine/infrasee-cli.git
+git clone https://github.com/yourusername/infrasee-cli.git
 cd infrasee-cli
 npm install && npm run build
 
@@ -119,7 +119,7 @@ source ~/.zshrc
 > 🚧 **Note**: We're working on a Homebrew formula for easy installation:
 > ```bash
 > # Future installation method
-> brew tap DreamsEngine/infrasee
+> brew tap yourusername/infrasee
 > brew install infrasee-cli
 > ```
 

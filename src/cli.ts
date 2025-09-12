@@ -605,12 +605,13 @@ allCommand
         console.log(csvOutput);
       }
     } else if (options.simple) {
-      // Combine all unique domains
+      // Combine all unique domains and resource names
       const allDomains = new Set<string>();
       
       cloudflareRecords.forEach(r => allDomains.add(r.name));
       coolifyResources.filter(r => r.fqdn).forEach(r => allDomains.add(r.fqdn));
-      digitalOceanResources.filter(r => r.domain).forEach(r => allDomains.add(r.domain));
+      // Include all DigitalOcean resources - both domains and resource names (like droplets)
+      digitalOceanResources.forEach(r => allDomains.add(r.domain || r.name));
       
       const simpleResult = { [ip]: Array.from(allDomains).sort() };
       const simpleOutput = JSON.stringify(simpleResult, null, 2);
