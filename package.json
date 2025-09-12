@@ -1,10 +1,10 @@
 {
-  "name": "dreamsflare",
-  "version": "1.2.0",
-  "description": "CLI tool to find all domains using a specific IP address via Cloudflare API",
+  "name": "infrasee-cli",
+  "version": "1.3.0",
+  "description": "CLI tool to find all domains and resources using a specific IP address across multiple cloud providers",
   "main": "dist/cli.js",
   "bin": {
-    "dreamsflare": "./dist/cli.js"
+    "infrasee": "./dist/cli.js"
   },
   "engines": {
     "node": ">=18.0.0"
@@ -16,9 +16,17 @@
     "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["cli", "cloudflare", "digitalocean", "coolify", "infrastructure", "ip", "dns", "devops"],
   "author": "Andres Lopez & Adrian Galvez <lab@dreamsengine.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DreamsEngine/infrasee-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/DreamsEngine/infrasee-cli/issues"
+  },
+  "homepage": "https://github.com/DreamsEngine/infrasee-cli#readme",
   "type": "commonjs",
   "dependencies": {
     "chalk": "^5.6.2",

@@ -4,12 +4,32 @@ import { homedir } from 'os';
 import { join } from 'path';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 
-// Generate a machine-specific key based on hostname and user home
+// Generate a machine-specific key with better entropy
 function getMachineKey(): string {
   const homeDir = homedir();
-  const hostname = process.env.HOSTNAME || process.env.COMPUTERNAME || 'default';
-  const machineId = `${homeDir}-${hostname}-dreamsflare-v1.1`;
-  return createHash('sha256').update(machineId).digest('hex');
+  const hostname = process.env.HOSTNAME || process.env.COMPUTERNAME || require('os').hostname() || 'default';
+  const username = process.env.USER || process.env.USERNAME || 'user';
+  const platform = process.platform;
+  const arch = process.arch;
+  
+  // Combine multiple stable machine identifiers (must be consistent across runs)
+  const machineId = [
+    homeDir,
+    hostname,
+    username,
+    platform,
+    arch,
+    'dreamsflare-v1.2-secure'
+  ].join('|');
+  
+  // Use PBKDF2 for key derivation (more secure than simple hash)
+  // Salt is derived from stable machine properties
+  const salt = createHash('sha256').update(homeDir + hostname + platform).digest();
+  const crypto = require('crypto');
+  
+  // Generate a deterministic key that's consistent across runs
+  const key = crypto.pbkdf2Sync(machineId, salt, 100000, 32, 'sha256');
+  return key.toString('hex').substring(0, 32);
 }
 
 // Encrypt data with AES
@@ -119,16 +139,23 @@ export function maskToken(token: string): string {
   return `${start}${masked}${end}`;
 }
 
-// Validate token format (basic validation)
+// Validate token format with proper security checks
 export function validateToken(token: string, type: 'cloudflare' | 'coolify'): boolean {
   if (!token || token.trim().length === 0) return false;
   
+  // Sanitize token - remove any potential injection attempts
+  const sanitized = token.trim();
+  
   if (type === 'cloudflare') {
-    // Cloudflare tokens are typically 40+ characters
-    return token.length >= 30;
+    // Cloudflare tokens should be alphanumeric with possible hyphens/underscores
+    // Length should be between 40-50 characters typically
+    const cfPattern = /^[A-Za-z0-9_-]{40,50}$/;
+    return cfPattern.test(sanitized);
   } else if (type === 'coolify') {
-    // Coolify tokens often have format like "1|xxxxx"
-    return token.length >= 10;
+    // Coolify tokens have format like "number|alphanumeric"
+    // Example: "1|b92QnFSO6YCrfQX3dV8q8K9pkIXUmhwdNvpmatnc"
+    const coolifyPattern = /^\d+\|[A-Za-z0-9]{40,60}$/;
+    return coolifyPattern.test(sanitized);
   }
   
   return false;

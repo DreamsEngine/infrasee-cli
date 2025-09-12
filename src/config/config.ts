@@ -13,7 +13,7 @@ dotenv.config({ silent: true, quiet: true } as any);
 function getMachineKey(): string {
   const homeDir = homedir();
   const hostname = process.env.HOSTNAME || process.env.COMPUTERNAME || 'default';
-  const machineId = `${homeDir}-${hostname}-dreamsflare-v1.1`;
+  const machineId = `${homeDir}-${hostname}-infrasee-v1.1`;
   return createHash('sha256').update(machineId).digest('hex').substring(0, 32);
 }
 
@@ -33,7 +33,7 @@ function decryptData(encryptedText: string): string {
     if (!decrypted || decrypted.length === 0) {
       if (process.env.DEBUG_DECRYPT) {
         console.error('Decryption failed: empty result');
-        console.error('Key used:', key.substring(0, 8) + '...');
+        // Never log keys, even partially - security risk!
       }
       return encryptedText;
     }
@@ -67,6 +67,7 @@ export interface Config {
   cloudflareApiKey?: string;
   coolifyApiToken?: string;
   coolifyUrl?: string;
+  digitalOceanToken?: string;
 }
 
 export function loadConfig(): Config {
@@ -78,9 +79,10 @@ export function loadConfig(): Config {
   config.cloudflareApiKey = process.env.CLOUDFLARE_API_KEY;
   config.coolifyApiToken = process.env.COOLIFY_API_TOKEN;
   config.coolifyUrl = process.env.COOLIFY_URL;
+  config.digitalOceanToken = process.env.DIGITALOCEAN_TOKEN;
 
   // Priority 2: Check for config file in home directory
-  const configPath = join(homedir(), '.dreamsflare', 'config.json');
+  const configPath = join(homedir(), '.infrasee', 'config.json');
   if (existsSync(configPath)) {
     try {
       const fileConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
@@ -102,6 +104,9 @@ export function loadConfig(): Config {
       }
       if (!config.coolifyUrl && fileConfig.coolifyUrl) {
         config.coolifyUrl = fileConfig.coolifyUrl; // URLs don't need encryption
+      }
+      if (!config.digitalOceanToken && fileConfig.digitalOceanToken) {
+        config.digitalOceanToken = isEncrypted ? decryptData(fileConfig.digitalOceanToken) : fileConfig.digitalOceanToken;
       }
     } catch (error) {
       // Silently fail if config file is invalid
@@ -128,9 +133,13 @@ export function validateCoolifyConfig(config: Config): boolean {
   return !!config.coolifyApiToken;
 }
 
+export function validateDigitalOceanConfig(config: Config): boolean {
+  return !!config.digitalOceanToken;
+}
+
 // Save configuration with encryption
 export function saveSecureConfig(config: Config): void {
-  const configDir = join(homedir(), '.dreamsflare');
+  const configDir = join(homedir(), '.infrasee');
   const configPath = join(configDir, 'config.json');
   
   // Create directory if it doesn't exist
@@ -198,6 +207,14 @@ export function saveSecureConfig(config: Config): void {
     secureConfig.coolifyUrl = config.coolifyUrl; // URL doesn't need encryption
   } else if (existingConfig.coolifyUrl) {
     secureConfig.coolifyUrl = existingConfig.coolifyUrl;
+  }
+  
+  if (config.digitalOceanToken) {
+    secureConfig.digitalOceanToken = isEncrypted(config.digitalOceanToken)
+      ? config.digitalOceanToken
+      : encryptData(config.digitalOceanToken);
+  } else if (existingConfig.digitalOceanToken) {
+    secureConfig.digitalOceanToken = existingConfig.digitalOceanToken;
   }
   
   // Write with restricted permissions

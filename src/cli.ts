@@ -3,12 +3,15 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { loadConfig, validateConfig, validateCoolifyConfig, saveSecureConfig } from './config/config';
+import { loadConfig, validateConfig, validateCoolifyConfig, validateDigitalOceanConfig, saveSecureConfig } from './config/config';
 import { CloudflareAPI } from './api/cloudflare';
 import { CoolifyAPI } from './api/coolify';
+import { DigitalOceanAPI } from './api/digitalocean';
 import { isValidIP } from './utils/validation';
 import { displayResults, displayError, displayInfo } from './utils/display';
+import { validateFilePath } from './utils/security';
 import { displayCoolifyResults, formatCoolifyTextOutput } from './utils/displayCoolify';
+import { displayDigitalOceanResults, formatDigitalOceanTextOutput } from './utils/displayDigitalOcean';
 import { generateCSV, combineDomainData } from './utils/csv';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
@@ -17,10 +20,21 @@ import { mkdirSync } from 'fs';
 
 const program = new Command();
 
+// Secure file writing helper
+function secureWriteFile(filePath: string, content: string): void {
+  try {
+    const validatedPath = validateFilePath(filePath);
+    writeFileSync(validatedPath, content, 'utf-8');
+  } catch (error) {
+    displayError(`Security error: ${(error as Error).message}`);
+    process.exit(1);
+  }
+}
+
 program
-  .name('dreamsflare')
-  .description('CLI tool to find all domains using a specific IP address via Cloudflare API')
-  .version('1.2.0');
+  .name('infrasee')
+  .description('CLI tool to find all domains and resources using a specific IP address across multiple cloud providers')
+  .version('1.3.0');
 
 program
   .command('ip')
@@ -45,7 +59,7 @@ program
       console.log('   - CLOUDFLARE_API_TOKEN (recommended)');
       console.log('   - OR CLOUDFLARE_EMAIL and CLOUDFLARE_API_KEY\n');
       console.log('2. Create a .env file in the current directory\n');
-      console.log('3. Run: dreamsflare config');
+      console.log('3. Run: infrasee config');
       process.exit(1);
     }
 
@@ -74,7 +88,7 @@ program
         const simpleResult = { [ip]: domains };
         const simpleOutput = JSON.stringify(simpleResult, null, 2);
         if (options.output) {
-          writeFileSync(options.output, simpleOutput);
+          secureWriteFile(options.output, simpleOutput);
           displayInfo(`Results saved to ${options.output}`);
         } else {
           console.log(simpleOutput);
@@ -82,7 +96,7 @@ program
       } else if (options.json) {
         const jsonOutput = JSON.stringify(records, null, 2);
         if (options.output) {
-          writeFileSync(options.output, jsonOutput);
+          secureWriteFile(options.output, jsonOutput);
           displayInfo(`Results saved to ${options.output}`);
         } else {
           console.log(jsonOutput);
@@ -91,7 +105,7 @@ program
         displayResults(records, ip);
         if (options.output) {
           const textOutput = formatTextOutput(records, ip);
-          writeFileSync(options.output, textOutput);
+          secureWriteFile(options.output, textOutput);
           displayInfo(`Results saved to ${options.output}`);
         }
       }
@@ -131,7 +145,7 @@ coolifyCommand
       console.log('   - COOLIFY_API_TOKEN');
       console.log('   - COOLIFY_URL (optional, defaults to https://iggy.dreamsengine.io)\n');
       console.log('2. Add to .env file in the current directory\n');
-      console.log('3. Run: dreamsflare coolify config');
+      console.log('3. Run: infrasee coolify config');
       process.exit(1);
     }
 
@@ -162,7 +176,7 @@ coolifyCommand
         const simpleResult = { [ip]: domains };
         const simpleOutput = JSON.stringify(simpleResult, null, 2);
         if (options.output) {
-          writeFileSync(options.output, simpleOutput);
+          secureWriteFile(options.output, simpleOutput);
           displayInfo(`Results saved to ${options.output}`);
         } else {
           console.log(simpleOutput);
@@ -170,7 +184,7 @@ coolifyCommand
       } else if (options.json) {
         const jsonOutput = JSON.stringify(resources, null, 2);
         if (options.output) {
-          writeFileSync(options.output, jsonOutput);
+          secureWriteFile(options.output, jsonOutput);
           displayInfo(`Results saved to ${options.output}`);
         } else {
           console.log(jsonOutput);
@@ -179,7 +193,7 @@ coolifyCommand
         displayCoolifyResults(resources, ip);
         if (options.output) {
           const textOutput = formatCoolifyTextOutput(resources, ip);
-          writeFileSync(options.output, textOutput);
+          secureWriteFile(options.output, textOutput);
           displayInfo(`Results saved to ${options.output}`);
         }
       }
@@ -197,7 +211,7 @@ coolifyCommand
   .option('--token <token>', 'Coolify API Token')
   .option('--url <url>', 'Coolify URL (optional)')
   .action(async (options: { token?: string; url?: string }) => {
-    const configDir = join(homedir(), '.dreamsflare');
+    const configDir = join(homedir(), '.infrasee');
     const configPath = join(configDir, 'config.json');
 
     try {
@@ -256,7 +270,7 @@ coolifyCommand
     
     if (!validateCoolifyConfig(config)) {
       displayError('No valid Coolify credentials found.');
-      console.log(chalk.yellow('\nRun "dreamsflare coolify config" to set up your credentials.'));
+      console.log(chalk.yellow('\nRun "infrasee coolify config" to set up your credentials.'));
       process.exit(1);
     }
 
@@ -281,14 +295,183 @@ coolifyCommand
     }
   });
 
-// Combined command for searching both Cloudflare and Coolify
+// DigitalOcean command group
+const digitaloceanCommand = program
+  .command('digitalocean')
+  .description('DigitalOcean-related commands');
+
+digitaloceanCommand
+  .command('ip')
+  .description('Find all DigitalOcean resources using a specific IP address')
+  .argument('<ip>', 'IP address to search for')
+  .option('-j, --json', 'Output results as JSON')
+  .option('-s, --simple', 'Output simple list of resources only')
+  .option('-o, --output <file>', 'Save results to a file')
+  .action(async (ip: string, options: { json?: boolean; simple?: boolean; output?: string }) => {
+    // Validate IP address
+    if (!isValidIP(ip)) {
+      displayError(`Invalid IP address: ${ip}`);
+      process.exit(1);
+    }
+
+    // Load and validate configuration
+    const config = loadConfig();
+    if (!validateDigitalOceanConfig(config)) {
+      displayError('No valid DigitalOcean credentials found.');
+      console.log(chalk.yellow('\nPlease configure your DigitalOcean credentials:\n'));
+      console.log('1. Set environment variables:');
+      console.log('   - DIGITALOCEAN_TOKEN\n');
+      console.log('2. Add to .env file in the current directory\n');
+      console.log('3. Run: infrasee digitalocean config');
+      process.exit(1);
+    }
+
+    const spinner = ora('Connecting to DigitalOcean API...').start();
+
+    try {
+      const api = new DigitalOceanAPI(config);
+      
+      // Test connection
+      spinner.text = 'Verifying credentials...';
+      const isConnected = await api.testConnection();
+      if (!isConnected) {
+        spinner.fail('Failed to authenticate with DigitalOcean API');
+        displayError('Please check your credentials');
+        process.exit(1);
+      }
+
+      spinner.text = `Searching for DigitalOcean resources using IP ${ip}...`;
+      const resources = await api.findResourcesByIP(ip);
+      spinner.succeed('Search completed');
+
+      // Handle output
+      if (options.simple) {
+        // Simple output: IP with resource names
+        const resourceNames = [...new Set(resources.map(r => r.name))].sort();
+        const simpleResult = { [ip]: resourceNames };
+        const simpleOutput = JSON.stringify(simpleResult, null, 2);
+        if (options.output) {
+          secureWriteFile(options.output, simpleOutput);
+          displayInfo(`Results saved to ${options.output}`);
+        } else {
+          console.log(simpleOutput);
+        }
+      } else if (options.json) {
+        const jsonOutput = JSON.stringify(resources, null, 2);
+        if (options.output) {
+          secureWriteFile(options.output, jsonOutput);
+          displayInfo(`Results saved to ${options.output}`);
+        } else {
+          console.log(jsonOutput);
+        }
+      } else {
+        displayDigitalOceanResults(resources, ip);
+        if (options.output) {
+          const textOutput = formatDigitalOceanTextOutput(resources, ip);
+          secureWriteFile(options.output, textOutput);
+          displayInfo(`Results saved to ${options.output}`);
+        }
+      }
+
+    } catch (error) {
+      spinner.fail('Operation failed');
+      displayError((error as Error).message);
+      process.exit(1);
+    }
+  });
+
+digitaloceanCommand
+  .command('config')
+  .description('Configure DigitalOcean API credentials')
+  .option('--token <token>', 'DigitalOcean API Token')
+  .action(async (options: { token?: string }) => {
+    const configDir = join(homedir(), '.infrasee');
+    const configPath = join(configDir, 'config.json');
+
+    try {
+      // Create directory if it doesn't exist
+      mkdirSync(configDir, { recursive: true });
+
+      // Load existing config
+      let existingConfig: any = {};
+      try {
+        const fs = await import('fs');
+        if (fs.existsSync(configPath)) {
+          existingConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        }
+      } catch {
+        // File doesn't exist or is invalid
+      }
+
+      if (!options.token) {
+        displayError('Please provide --token');
+        process.exit(1);
+      }
+
+      existingConfig.digitalOceanToken = options.token;
+
+      // Test the credentials
+      const spinner = ora('Testing DigitalOcean credentials...').start();
+      const api = new DigitalOceanAPI(existingConfig);
+      const isValid = await api.testConnection();
+
+      if (!isValid) {
+        spinner.fail('Invalid credentials');
+        process.exit(1);
+      }
+
+      // Save configuration with encryption
+      saveSecureConfig(existingConfig);
+      spinner.succeed('DigitalOcean configuration saved successfully with encryption');
+      displayInfo(`Encrypted config saved to: ${configPath}`);
+
+    } catch (error) {
+      displayError((error as Error).message);
+      process.exit(1);
+    }
+  });
+
+digitaloceanCommand
+  .command('test')
+  .description('Test DigitalOcean API connection')
+  .action(async () => {
+    const config = loadConfig();
+    
+    if (!validateDigitalOceanConfig(config)) {
+      displayError('No valid DigitalOcean credentials found.');
+      console.log(chalk.yellow('\nRun "infrasee digitalocean config" to set up your credentials.'));
+      process.exit(1);
+    }
+
+    const spinner = ora('Testing connection to DigitalOcean API...').start();
+
+    try {
+      const api = new DigitalOceanAPI(config);
+      const isConnected = await api.testConnection();
+      
+      if (isConnected) {
+        spinner.succeed('Successfully connected to DigitalOcean API');
+        displayInfo('Using DigitalOcean API v2');
+      } else {
+        spinner.fail('Failed to connect to DigitalOcean API');
+        displayError('Please check your credentials');
+        process.exit(1);
+      }
+    } catch (error) {
+      spinner.fail('Connection test failed');
+      displayError((error as Error).message);
+      process.exit(1);
+    }
+  });
+
+// Combined command for searching all services
 const allCommand = program
   .command('all')
-  .description('Search both Cloudflare and Coolify');
+  .description('Search Cloudflare, Coolify, and DigitalOcean');
 
 allCommand
   .command('ip')
-  .description('Find all domains from both Cloudflare and Coolify for an IP')
+  .description('Find all resources from Cloudflare, Coolify, and DigitalOcean for an IP')
   .argument('<ip>', 'IP address to search for')
   .option('-j, --json', 'Output results as JSON')
   .option('-s, --simple', 'Output simple list of domains only')
@@ -304,35 +487,45 @@ allCommand
     const config = loadConfig();
     const hasCloudflare = validateConfig(config);
     const hasCoolify = validateCoolifyConfig(config);
+    const hasDigitalOcean = validateDigitalOceanConfig(config);
 
-    if (!hasCloudflare && !hasCoolify) {
-      displayError('No valid credentials found for either Cloudflare or Coolify.');
+    if (!hasCloudflare && !hasCoolify && !hasDigitalOcean) {
+      displayError('No valid credentials found for any service.');
       console.log(chalk.yellow('\nPlease configure at least one service:'));
       console.log(chalk.cyan('\nFor Cloudflare:'));
       console.log('  1. Set environment variable: CLOUDFLARE_API_TOKEN=your_token');
-      console.log('  2. Or run: dreamsflare config --token your_cloudflare_token');
+      console.log('  2. Or run: infrasee config --token your_cloudflare_token');
       console.log(chalk.cyan('\nFor Coolify:'));
       console.log('  1. Set environment variables:');
       console.log('     COOLIFY_API_TOKEN=your_token');
       console.log('     COOLIFY_URL=https://your-coolify-instance.com');
-      console.log('  2. Or run: dreamsflare coolify config --token your_coolify_token --url https://your-coolify.com');
+      console.log('  2. Or run: infrasee coolify config --token your_coolify_token --url https://your-coolify.com');
+      console.log(chalk.cyan('\nFor DigitalOcean:'));
+      console.log('  1. Set environment variable: DIGITALOCEAN_TOKEN=your_token');
+      console.log('  2. Or run: infrasee digitalocean config --token your_digitalocean_token');
       process.exit(1);
     }
 
     // Show which services are configured
-    if (!hasCloudflare || !hasCoolify) {
+    if (!hasCloudflare || !hasCoolify || !hasDigitalOcean) {
       console.log(chalk.yellow('\n⚠ Warning: Not all services are configured'));
       if (!hasCloudflare) {
         console.log(chalk.gray('  • Cloudflare: Not configured (skipping)'));
-        console.log(chalk.gray('    To configure: dreamsflare config --token your_token'));
+        console.log(chalk.gray('    To configure: infrasee config --token your_token'));
       } else {
         console.log(chalk.green('  • Cloudflare: ✓ Configured'));
       }
       if (!hasCoolify) {
         console.log(chalk.gray('  • Coolify: Not configured (skipping)'));
-        console.log(chalk.gray('    To configure: dreamsflare coolify config --token your_token'));
+        console.log(chalk.gray('    To configure: infrasee coolify config --token your_token'));
       } else {
         console.log(chalk.green('  • Coolify: ✓ Configured'));
+      }
+      if (!hasDigitalOcean) {
+        console.log(chalk.gray('  • DigitalOcean: Not configured (skipping)'));
+        console.log(chalk.gray('    To configure: infrasee digitalocean config --token your_token'));
+      } else {
+        console.log(chalk.green('  • DigitalOcean: ✓ Configured'));
       }
       console.log('');
     }
@@ -341,6 +534,7 @@ allCommand
     
     let cloudflareRecords: any[] = [];
     let coolifyResources: any[] = [];
+    let digitalOceanResources: any[] = [];
     let errors: string[] = [];
 
     // Search Cloudflare
@@ -375,6 +569,22 @@ allCommand
       }
     }
 
+    // Search DigitalOcean
+    if (hasDigitalOcean) {
+      try {
+        spinner.text = 'Searching DigitalOcean...';
+        const doApi = new DigitalOceanAPI(config);
+        const isConnected = await doApi.testConnection();
+        if (isConnected) {
+          digitalOceanResources = await doApi.findResourcesByIP(ip);
+        } else {
+          errors.push('Failed to connect to DigitalOcean API');
+        }
+      } catch (error) {
+        errors.push(`DigitalOcean: ${(error as Error).message}`);
+      }
+    }
+
     spinner.succeed('Search completed');
 
     // Display any errors
@@ -385,11 +595,11 @@ allCommand
 
     // Handle output formats
     if (options.csv) {
-      const combinedData = combineDomainData(ip, cloudflareRecords, coolifyResources);
+      const combinedData = combineDomainData(ip, cloudflareRecords, coolifyResources, digitalOceanResources);
       const csvOutput = generateCSV(combinedData);
       
       if (options.output) {
-        writeFileSync(options.output, csvOutput);
+        secureWriteFile(options.output, csvOutput);
         displayInfo(`CSV saved to ${options.output}`);
       } else {
         console.log(csvOutput);
@@ -400,6 +610,7 @@ allCommand
       
       cloudflareRecords.forEach(r => allDomains.add(r.name));
       coolifyResources.filter(r => r.fqdn).forEach(r => allDomains.add(r.fqdn));
+      digitalOceanResources.filter(r => r.domain).forEach(r => allDomains.add(r.domain));
       
       const simpleResult = { [ip]: Array.from(allDomains).sort() };
       const simpleOutput = JSON.stringify(simpleResult, null, 2);
@@ -415,12 +626,15 @@ allCommand
         ip,
         cloudflare: cloudflareRecords,
         coolify: coolifyResources,
+        digitalocean: digitalOceanResources,
         summary: {
           cloudflare_domains: [...new Set(cloudflareRecords.map(r => r.name))],
           coolify_domains: [...new Set(coolifyResources.filter(r => r.fqdn).map(r => r.fqdn))],
+          digitalocean_resources: [...new Set(digitalOceanResources.map(r => r.name))],
           total_unique_domains: new Set([
             ...cloudflareRecords.map(r => r.name),
-            ...coolifyResources.filter(r => r.fqdn).map(r => r.fqdn)
+            ...coolifyResources.filter(r => r.fqdn).map(r => r.fqdn),
+            ...digitalOceanResources.filter(r => r.domain).map(r => r.domain)
           ]).size
         }
       };
@@ -451,16 +665,25 @@ allCommand
         console.log(chalk.yellow('No resources found in Coolify'));
       }
       
+      if (digitalOceanResources.length > 0) {
+        console.log(chalk.green('\nDigitalOcean Resources:'));
+        displayDigitalOceanResults(digitalOceanResources, ip);
+      } else if (hasDigitalOcean) {
+        console.log(chalk.yellow('No resources found in DigitalOcean'));
+      }
+      
       // Summary
       const uniqueDomains = new Set([
         ...cloudflareRecords.map(r => r.name),
-        ...coolifyResources.filter(r => r.fqdn).map(r => r.fqdn)
+        ...coolifyResources.filter(r => r.fqdn).map(r => r.fqdn),
+        ...digitalOceanResources.filter(r => r.domain).map(r => r.domain)
       ]);
       
       console.log(chalk.cyan('\n=== Summary ==='));
       console.log(`Total unique domains: ${uniqueDomains.size}`);
       console.log(`Cloudflare domains: ${new Set(cloudflareRecords.map(r => r.name)).size}`);
       console.log(`Coolify domains: ${new Set(coolifyResources.filter(r => r.fqdn).map(r => r.fqdn)).size}`);
+      console.log(`DigitalOcean resources: ${new Set(digitalOceanResources.map(r => r.name)).size}`);
     }
   });
 
@@ -471,7 +694,7 @@ program
   .option('--email <email>', 'Cloudflare account email')
   .option('--key <key>', 'Cloudflare Global API Key')
   .action(async (options: { token?: string; email?: string; key?: string }) => {
-    const configDir = join(homedir(), '.dreamsflare');
+    const configDir = join(homedir(), '.infrasee');
     const configPath = join(configDir, 'config.json');
 
     try {
@@ -522,7 +745,7 @@ program
     
     if (!validateConfig(config)) {
       displayError('No valid Cloudflare credentials found.');
-      console.log(chalk.yellow('\nRun "dreamsflare config" to set up your credentials.'));
+      console.log(chalk.yellow('\nRun "infrasee config" to set up your credentials.'));
       process.exit(1);
     }
 
