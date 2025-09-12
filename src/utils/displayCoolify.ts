@@ -1,19 +1,14 @@
 import chalk from 'chalk';
 import { CoolifyResource } from '../api/coolify';
-
 export function displayCoolifyResults(resources: CoolifyResource[], ipAddress: string): void {
   if (resources.length === 0) {
     console.log(chalk.yellow(`\nNo Coolify resources found for IP address: ${ipAddress}`));
     return;
   }
-
   console.log(chalk.green(`\nFound ${resources.length} Coolify resource(s) using IP ${ipAddress}:\n`));
-  
-  // Group by type
   const applications = resources.filter(r => r.type === 'application');
   const services = resources.filter(r => r.type === 'service');
   const databases = resources.filter(r => r.type === 'database');
-
   if (applications.length > 0) {
     console.log(chalk.cyan('Applications:'));
     applications.forEach(app => {
@@ -29,7 +24,6 @@ export function displayCoolifyResults(resources: CoolifyResource[], ipAddress: s
     });
     console.log();
   }
-
   if (services.length > 0) {
     console.log(chalk.cyan('Services:'));
     services.forEach(service => {
@@ -42,7 +36,6 @@ export function displayCoolifyResults(resources: CoolifyResource[], ipAddress: s
     });
     console.log();
   }
-
   if (databases.length > 0) {
     console.log(chalk.cyan('Databases:'));
     databases.forEach(db => {
@@ -56,20 +49,16 @@ export function displayCoolifyResults(resources: CoolifyResource[], ipAddress: s
     console.log();
   }
 }
-
 export function formatCoolifyTextOutput(resources: CoolifyResource[], ip: string): string {
   let output = `Coolify resources using IP ${ip}\n`;
   output += '='.repeat(50) + '\n\n';
-
   if (resources.length === 0) {
     output += 'No resources found.\n';
     return output;
   }
-
   const applications = resources.filter(r => r.type === 'application');
   const services = resources.filter(r => r.type === 'service');
   const databases = resources.filter(r => r.type === 'database');
-
   if (applications.length > 0) {
     output += 'Applications:\n';
     applications.forEach(app => {
@@ -80,7 +69,6 @@ export function formatCoolifyTextOutput(resources: CoolifyResource[], ip: string
     });
     output += '\n';
   }
-
   if (services.length > 0) {
     output += 'Services:\n';
     services.forEach(service => {
@@ -91,7 +79,6 @@ export function formatCoolifyTextOutput(resources: CoolifyResource[], ip: string
     });
     output += '\n';
   }
-
   if (databases.length > 0) {
     output += 'Databases:\n';
     databases.forEach(db => {
@@ -101,6 +88,5 @@ export function formatCoolifyTextOutput(resources: CoolifyResource[], ip: string
     });
     output += '\n';
   }
-
   return output;
 }

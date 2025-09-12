@@ -1,7 +1,5 @@
 import { createHttpClient, HttpClient } from '../utils/http';
 import { Config } from '../config/config';
-
-// DigitalOcean API Types
 export interface DigitalOceanDroplet {
   id: number;
   name: string;
@@ -64,7 +62,6 @@ export interface DigitalOceanDroplet {
   tags: string[];
   vpc_uuid?: string;
 }
-
 export interface DigitalOceanLoadBalancer {
   id: string;
   name: string;
@@ -109,7 +106,6 @@ export interface DigitalOceanLoadBalancer {
   disable_lets_encrypt_dns_records: boolean;
   vpc_uuid?: string;
 }
-
 export interface DigitalOceanFloatingIP {
   ip: string;
   region: {
@@ -122,13 +118,11 @@ export interface DigitalOceanFloatingIP {
   droplet?: DigitalOceanDroplet;
   locked: boolean;
 }
-
 export interface DigitalOceanDomain {
   name: string;
   ttl: number;
   zone_file?: string;
 }
-
 export interface DigitalOceanDomainRecord {
   id: number;
   type: string;
@@ -141,7 +135,6 @@ export interface DigitalOceanDomainRecord {
   flags?: number;
   tag?: string;
 }
-
 export interface DigitalOceanResource {
   type: 'droplet' | 'load_balancer' | 'floating_ip' | 'domain_record';
   name: string;
@@ -151,26 +144,21 @@ export interface DigitalOceanResource {
   tags?: string[];
   domain?: string;
 }
-
 export class DigitalOceanAPI {
   private client: HttpClient;
-
   constructor(config: Config) {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-
     if (config.digitalOceanToken) {
       headers['Authorization'] = `Bearer ${config.digitalOceanToken}`;
     }
-
     this.client = createHttpClient({
       baseURL: 'https://api.digitalocean.com/v2',
       headers,
       timeout: 30000,
     });
   }
-
   async testConnection(): Promise<boolean> {
     try {
       const response = await this.client.get<{ account: any }>('/account');
@@ -179,8 +167,6 @@ export class DigitalOceanAPI {
       return false;
     }
   }
-
-  // Get all droplets
   async getDroplets(page = 1, perPage = 100): Promise<{ droplets: DigitalOceanDroplet[], totalPages: number }> {
     try {
       const response = await this.client.get<{
@@ -199,8 +185,6 @@ export class DigitalOceanAPI {
           per_page: perPage,
         },
       });
-
-      // Calculate total pages from meta or links
       let totalPages = 1;
       if (response.meta?.total) {
         totalPages = Math.ceil(response.meta.total / perPage);
@@ -210,7 +194,6 @@ export class DigitalOceanAPI {
           totalPages = parseInt(lastPageMatch[1], 10);
         }
       }
-
       return {
         droplets: response.droplets || [],
         totalPages,
@@ -220,8 +203,6 @@ export class DigitalOceanAPI {
       throw error;
     }
   }
-
-  // Get all load balancers
   async getLoadBalancers(page = 1, perPage = 100): Promise<{ load_balancers: DigitalOceanLoadBalancer[], totalPages: number }> {
     try {
       const response = await this.client.get<{
@@ -240,7 +221,6 @@ export class DigitalOceanAPI {
           per_page: perPage,
         },
       });
-
       let totalPages = 1;
       if (response.meta?.total) {
         totalPages = Math.ceil(response.meta.total / perPage);
@@ -250,7 +230,6 @@ export class DigitalOceanAPI {
           totalPages = parseInt(lastPageMatch[1], 10);
         }
       }
-
       return {
         load_balancers: response.load_balancers || [],
         totalPages,
@@ -260,45 +239,35 @@ export class DigitalOceanAPI {
       throw error;
     }
   }
-
-  // Get all floating IPs
   async getFloatingIPs(): Promise<DigitalOceanFloatingIP[]> {
     try {
       const response = await this.client.get<{
         floating_ips: DigitalOceanFloatingIP[];
       }>('/floating_ips');
-
       return response.floating_ips || [];
     } catch (error) {
       this.handleError(error);
       throw error;
     }
   }
-
-  // Get all domains
   async getDomains(): Promise<DigitalOceanDomain[]> {
     try {
       const response = await this.client.get<{
         domains: DigitalOceanDomain[];
       }>('/domains');
-
       return response.domains || [];
     } catch (error) {
       this.handleError(error);
       throw error;
     }
   }
-
-  // Get domain records for a specific domain
   async getDomainRecords(domainName: string): Promise<DigitalOceanDomainRecord[]> {
     try {
       const response = await this.client.get<{
         domain_records: DigitalOceanDomainRecord[];
       }>(`/domains/${domainName}/records`);
-
       return response.domain_records || [];
     } catch (error) {
-      // If domain doesn't exist, return empty array
       if (error instanceof Error && error.message.includes('404')) {
         return [];
       }
@@ -306,22 +275,15 @@ export class DigitalOceanAPI {
       throw error;
     }
   }
-
-  // Find all resources using a specific IP address
   async findResourcesByIP(ipAddress: string): Promise<DigitalOceanResource[]> {
     const resources: DigitalOceanResource[] = [];
-
     try {
-      // Search droplets
       console.log('Searching droplets...');
       let currentPage = 1;
       let hasMorePages = true;
-
       while (hasMorePages) {
         const { droplets, totalPages } = await this.getDroplets(currentPage);
-        
         for (const droplet of droplets) {
-          // Check IPv4 addresses
           if (droplet.networks.v4) {
             for (const network of droplet.networks.v4) {
               if (network.ip_address === ipAddress) {
@@ -336,8 +298,6 @@ export class DigitalOceanAPI {
               }
             }
           }
-
-          // Check IPv6 addresses
           if (droplet.networks.v6) {
             for (const network of droplet.networks.v6) {
               if (network.ip_address === ipAddress) {
@@ -353,19 +313,14 @@ export class DigitalOceanAPI {
             }
           }
         }
-
         hasMorePages = currentPage < totalPages;
         currentPage++;
       }
-
-      // Search load balancers
       console.log('Searching load balancers...');
       currentPage = 1;
       hasMorePages = true;
-
       while (hasMorePages) {
         const { load_balancers, totalPages } = await this.getLoadBalancers(currentPage);
-        
         for (const lb of load_balancers) {
           if (lb.ip === ipAddress) {
             resources.push({
@@ -378,15 +333,11 @@ export class DigitalOceanAPI {
             });
           }
         }
-
         hasMorePages = currentPage < totalPages;
         currentPage++;
       }
-
-      // Search floating IPs
       console.log('Searching floating IPs...');
       const floatingIPs = await this.getFloatingIPs();
-      
       for (const fip of floatingIPs) {
         if (fip.ip === ipAddress) {
           resources.push({
@@ -398,14 +349,10 @@ export class DigitalOceanAPI {
           });
         }
       }
-
-      // Search domain records
       console.log('Searching domain records...');
       const domains = await this.getDomains();
-      
       for (const domain of domains) {
         const records = await this.getDomainRecords(domain.name);
-        
         for (const record of records) {
           if (record.type === 'A' || record.type === 'AAAA') {
             if (record.data === ipAddress) {
@@ -420,15 +367,12 @@ export class DigitalOceanAPI {
           }
         }
       }
-
     } catch (error) {
       console.error('Error searching DigitalOcean resources:', error);
       this.handleError(error);
     }
-
     return resources;
   }
-
   private handleError(error: any): void {
     if (error instanceof Error) {
       throw error;

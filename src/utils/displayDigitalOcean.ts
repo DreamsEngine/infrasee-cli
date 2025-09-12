@@ -1,24 +1,17 @@
 import chalk from 'chalk';
 import { DigitalOceanResource } from '../api/digitalocean';
-
 export function displayDigitalOceanResults(resources: DigitalOceanResource[], ip: string): void {
   console.log('');
-  
   if (resources.length === 0) {
     console.log(chalk.yellow(`No DigitalOcean resources found using IP ${ip}`));
     return;
   }
-
   console.log(chalk.green(`Found ${resources.length} DigitalOcean resource(s) using IP ${ip}:`));
   console.log('');
-
-  // Group resources by type
   const droplets = resources.filter(r => r.type === 'droplet');
   const loadBalancers = resources.filter(r => r.type === 'load_balancer');
   const floatingIPs = resources.filter(r => r.type === 'floating_ip');
   const domainRecords = resources.filter(r => r.type === 'domain_record');
-
-  // Display Droplets
   if (droplets.length > 0) {
     console.log(chalk.cyan('Droplets:'));
     droplets.forEach(droplet => {
@@ -32,8 +25,6 @@ export function displayDigitalOceanResults(resources: DigitalOceanResource[], ip
     });
     console.log('');
   }
-
-  // Display Load Balancers
   if (loadBalancers.length > 0) {
     console.log(chalk.cyan('Load Balancers:'));
     loadBalancers.forEach(lb => {
@@ -47,8 +38,6 @@ export function displayDigitalOceanResults(resources: DigitalOceanResource[], ip
     });
     console.log('');
   }
-
-  // Display Floating IPs
   if (floatingIPs.length > 0) {
     console.log(chalk.cyan('Floating IPs:'));
     floatingIPs.forEach(fip => {
@@ -59,8 +48,6 @@ export function displayDigitalOceanResults(resources: DigitalOceanResource[], ip
     });
     console.log('');
   }
-
-  // Display Domain Records
   if (domainRecords.length > 0) {
     console.log(chalk.cyan('Domain Records:'));
     domainRecords.forEach(record => {
@@ -71,23 +58,17 @@ export function displayDigitalOceanResults(resources: DigitalOceanResource[], ip
     console.log('');
   }
 }
-
 export function formatDigitalOceanTextOutput(resources: DigitalOceanResource[], ip: string): string {
   let output = `DigitalOcean Resources using IP ${ip}\n`;
   output += '='.repeat(50) + '\n\n';
-
   if (resources.length === 0) {
     output += 'No resources found.\n';
     return output;
   }
-
-  // Group resources by type
   const droplets = resources.filter(r => r.type === 'droplet');
   const loadBalancers = resources.filter(r => r.type === 'load_balancer');
   const floatingIPs = resources.filter(r => r.type === 'floating_ip');
   const domainRecords = resources.filter(r => r.type === 'domain_record');
-
-  // Format Droplets
   if (droplets.length > 0) {
     output += 'Droplets:\n';
     droplets.forEach(droplet => {
@@ -101,8 +82,6 @@ export function formatDigitalOceanTextOutput(resources: DigitalOceanResource[], 
     });
     output += '\n';
   }
-
-  // Format Load Balancers
   if (loadBalancers.length > 0) {
     output += 'Load Balancers:\n';
     loadBalancers.forEach(lb => {
@@ -116,8 +95,6 @@ export function formatDigitalOceanTextOutput(resources: DigitalOceanResource[], 
     });
     output += '\n';
   }
-
-  // Format Floating IPs
   if (floatingIPs.length > 0) {
     output += 'Floating IPs:\n';
     floatingIPs.forEach(fip => {
@@ -128,8 +105,6 @@ export function formatDigitalOceanTextOutput(resources: DigitalOceanResource[], 
     });
     output += '\n';
   }
-
-  // Format Domain Records
   if (domainRecords.length > 0) {
     output += 'Domain Records:\n';
     domainRecords.forEach(record => {
@@ -139,6 +114,5 @@ export function formatDigitalOceanTextOutput(resources: DigitalOceanResource[], 
     });
     output += '\n';
   }
-
   return output;
 }
