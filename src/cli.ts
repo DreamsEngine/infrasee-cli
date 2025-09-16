@@ -2,7 +2,7 @@
 import { Command } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
-import { loadConfig, validateConfig, validateCoolifyConfig, validateDigitalOceanConfig, saveSecureConfig } from './config/config';
+import { loadConfig, validateConfig, validateCoolifyConfig, validateDigitalOceanConfig, validateGCPConfig, saveSecureConfig } from './config/config';
 import { CloudflareAPI } from './api/cloudflare';
 import { CoolifyAPI } from './api/coolify';
 import { DigitalOceanAPI } from './api/digitalocean';
@@ -29,15 +29,10 @@ function secureWriteFile(filePath: string, content: string): void {
 program
   .name('infrasee')
   .description('CLI tool to find all domains and resources using a specific IP address across multiple cloud providers')
-  .version('1.3.0');
-program
-  .command('ip')
-  .description('Find all domains using a specific IP address')
-  .argument('<ip>', 'IP address to search for')
-  .option('-j, --json', 'Output results as JSON')
-  .option('-s, --simple', 'Output simple list of domains only')
-  .option('-o, --output <file>', 'Save results to a file')
-  .action(async (ip: string, options: { json?: boolean; simple?: boolean; output?: string }) => {
+  .version('1.5.4');
+
+// Helper function for Cloudflare IP search
+async function handleCloudflareIPSearch(ip: string, options: { json?: boolean; simple?: boolean; output?: string }) {
     if (!isValidIP(ip)) {
       displayError(`Invalid IP address: ${ip}`);
       process.exit(1);
@@ -50,7 +45,7 @@ program
       console.log('   - CLOUDFLARE_API_TOKEN (recommended)');
       console.log('   - OR CLOUDFLARE_EMAIL and CLOUDFLARE_API_KEY\n');
       console.log('2. Create a .env file in the current directory\n');
-      console.log('3. Run: infrasee config');
+      console.log('3. Run: infrasee cloudflare config');
       process.exit(1);
     }
     const spinner = ora('Connecting to Cloudflare API...').start();
@@ -68,7 +63,16 @@ program
       spinner.succeed('Search completed');
       if (options.simple) {
         const domains = [...new Set(records.map(r => r.name))].sort();
-        const simpleResult = { [ip]: domains };
+        const simpleResult = {
+          ip,
+          provider: 'cloudflare',
+          type: 'dns_records',
+          resources: domains,
+          summary: {
+            total_domains: domains.length,
+            zones: [...new Set(records.map(r => r.zone_name))].length
+          }
+        };
         const simpleOutput = JSON.stringify(simpleResult, null, 2);
         if (options.output) {
           secureWriteFile(options.output, simpleOutput);
@@ -97,7 +101,90 @@ program
       displayError((error as Error).message);
       process.exit(1);
     }
+}
+
+const cloudflareCommand = program
+  .command('cloudflare')
+  .description('Cloudflare-related commands');
+
+cloudflareCommand
+  .command('ip')
+  .description('Find all domains using a specific IP address')
+  .argument('<ip>', 'IP address to search for')
+  .option('-j, --json', 'Output results as JSON')
+  .option('-s, --simple', 'Output simple list of domains only')
+  .option('-o, --output <file>', 'Save results to a file')
+  .action(handleCloudflareIPSearch);
+
+cloudflareCommand
+  .command('config')
+  .description('Configure Cloudflare API credentials')
+  .option('--token <token>', 'Cloudflare API Token')
+  .option('--email <email>', 'Cloudflare account email')
+  .option('--key <key>', 'Cloudflare Global API Key')
+  .action(async (options: { token?: string; email?: string; key?: string }) => {
+    const configDir = join(homedir(), '.infrasee');
+    const configPath = join(configDir, 'config.json');
+    try {
+      mkdirSync(configDir, { recursive: true });
+      let config: any = {};
+      if (options.token) {
+        config.cloudflareApiToken = options.token;
+        delete config.cloudflareEmail;
+        delete config.cloudflareApiKey;
+      } else if (options.email && options.key) {
+        config.cloudflareEmail = options.email;
+        config.cloudflareApiKey = options.key;
+        delete config.cloudflareApiToken;
+      } else {
+        displayError('Please provide either --token OR both --email and --key');
+        process.exit(1);
+      }
+      const spinner = ora('Testing credentials...').start();
+      const api = new CloudflareAPI(config);
+      const isValid = await api.testConnection();
+      if (!isValid) {
+        spinner.fail('Invalid credentials');
+        process.exit(1);
+      }
+      saveSecureConfig(config);
+      spinner.succeed('Configuration saved successfully with encryption');
+      displayInfo(`Encrypted config saved to: ${configPath}`);
+    } catch (error) {
+      displayError((error as Error).message);
+      process.exit(1);
+    }
   });
+
+cloudflareCommand
+  .command('test')
+  .description('Test Cloudflare API connection')
+  .action(async () => {
+    const config = loadConfig();
+    if (!validateConfig(config)) {
+      displayError('No valid Cloudflare credentials found.');
+      console.log(chalk.yellow('\nRun "infrasee cloudflare config" to set up your credentials.'));
+      process.exit(1);
+    }
+    const spinner = ora('Testing connection to Cloudflare API...').start();
+    try {
+      const api = new CloudflareAPI(config);
+      const isConnected = await api.testConnection();
+      if (isConnected) {
+        spinner.succeed('Successfully connected to Cloudflare API');
+        displayInfo('Using Cloudflare API v4');
+      } else {
+        spinner.fail('Failed to connect to Cloudflare API');
+        displayError('Please check your credentials');
+        process.exit(1);
+      }
+    } catch (error) {
+      spinner.fail('Connection test failed');
+      displayError((error as Error).message);
+      process.exit(1);
+    }
+  });
+
 const coolifyCommand = program
   .command('coolify')
   .description('Coolify-related commands');
@@ -141,7 +228,17 @@ coolifyCommand
         const domains = [...new Set(resources
           .filter(r => r.fqdn)
           .map(r => r.fqdn as string))].sort();
-        const simpleResult = { [ip]: domains };
+        const simpleResult = {
+          ip,
+          provider: 'coolify',
+          type: 'applications',
+          resources: domains,
+          summary: {
+            total_applications: resources.length,
+            with_domains: domains.length,
+            without_domains: resources.filter(r => !r.fqdn).length
+          }
+        };
         const simpleOutput = JSON.stringify(simpleResult, null, 2);
         if (options.output) {
           secureWriteFile(options.output, simpleOutput);
@@ -282,7 +379,19 @@ digitaloceanCommand
       spinner.succeed('Search completed');
       if (options.simple) {
         const resourceNames = [...new Set(resources.map(r => r.name))].sort();
-        const simpleResult = { [ip]: resourceNames };
+        const simpleResult = {
+          ip,
+          provider: 'digitalocean',
+          type: 'infrastructure',
+          resources: resourceNames,
+          summary: {
+            total_resources: resources.length,
+            by_type: resources.reduce((acc, r) => {
+              acc[r.type] = (acc[r.type] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>)
+          }
+        };
         const simpleOutput = JSON.stringify(simpleResult, null, 2);
         if (options.output) {
           secureWriteFile(options.output, simpleOutput);
@@ -377,18 +486,224 @@ digitaloceanCommand
       process.exit(1);
     }
   });
+const gcpCommand = program
+  .command('gcp')
+  .description('Google Cloud Platform-related commands');
+gcpCommand
+  .command('ip')
+  .description('Find all GCP resources using a specific IP address')
+  .argument('<ip>', 'IP address to search for')
+  .option('-j, --json', 'Output results as JSON')
+  .option('-s, --simple', 'Output simple list of resources only')
+  .option('-a, --all-projects', 'Search all accessible GCP projects (auto-discover)')
+  .option('-o, --output <file>', 'Save results to a file')
+  .action(async (ip: string, options: { json?: boolean; simple?: boolean; allProjects?: boolean; output?: string }) => {
+    if (!isValidIP(ip)) {
+      displayError(`Invalid IP address: ${ip}`);
+      process.exit(1);
+    }
+    const config = loadConfig();
+    if (!validateGCPConfig(config)) {
+      displayError('No valid GCP credentials found.');
+      console.log(chalk.yellow('\nPlease configure GCP credentials:'));
+      console.log('1. Set environment variables:');
+      console.log('   - GCP_PROJECT_ID or GCP_PROJECT_IDS (comma-separated)');
+      console.log('   - GCP_ACCESS_TOKEN or GCP_SERVICE_ACCOUNT_KEY');
+      console.log('2. Add to .env file in the current directory\n');
+      console.log('3. Run: infrasee gcp config');
+      process.exit(1);
+    }
+    const spinner = ora('Connecting to GCP API...').start();
+    try {
+      const { GCPAPI } = await import('./api/gcp');
+      // Enable auto-discovery if --all-projects flag is set
+      const apiConfig = options.allProjects
+        ? { ...config, autoDiscoverProjects: true }
+        : config;
+      const api = new GCPAPI(apiConfig);
+      spinner.text = 'Verifying credentials...';
+      const isConnected = await api.testConnection();
+      if (!isConnected) {
+        spinner.fail('Failed to authenticate with GCP API');
+        displayError('Please check your GCP project ID and credentials');
+        process.exit(1);
+      }
+
+      if (options.allProjects) {
+        spinner.text = `Searching for GCP resources using IP ${ip} across all accessible projects...`;
+      } else {
+        const projectList = config.gcpProjectIds && config.gcpProjectIds.length > 0
+          ? config.gcpProjectIds.join(', ')
+          : config.gcpProjectId;
+        spinner.text = `Searching for GCP resources using IP ${ip} across project(s): ${projectList}...`;
+      }
+      const resources = await api.findResourcesByIP(ip);
+      spinner.succeed('Search completed');
+      if (options.simple) {
+        const resourceNames = [...new Set(resources.map(r => r.name))].sort();
+        const simpleResult = {
+          ip,
+          provider: 'gcp',
+          type: 'cloud_resources',
+          resources: resourceNames,
+          summary: {
+            total_resources: resources.length,
+            by_type: resources.reduce((acc, r) => {
+              acc[r.type] = (acc[r.type] || 0) + 1;
+              return acc;
+            }, {} as Record<string, number>),
+            projects: [...new Set(resources.map(r => r.projectId).filter(Boolean))]
+          }
+        };
+        const simpleOutput = JSON.stringify(simpleResult, null, 2);
+        if (options.output) {
+          secureWriteFile(options.output, simpleOutput);
+          displayInfo(`Results saved to ${options.output}`);
+        } else {
+          console.log(simpleOutput);
+        }
+      } else if (options.json) {
+        const jsonOutput = JSON.stringify(resources, null, 2);
+        if (options.output) {
+          secureWriteFile(options.output, jsonOutput);
+          displayInfo(`Results saved to ${options.output}`);
+        } else {
+          console.log(jsonOutput);
+        }
+      } else {
+        const { displayGCPResults, formatGCPTextOutput } = await import('./utils/displayGCP');
+        displayGCPResults(resources, ip);
+        if (options.output) {
+          const textOutput = formatGCPTextOutput(resources, ip);
+          secureWriteFile(options.output, textOutput);
+          displayInfo(`Results saved to ${options.output}`);
+        }
+      }
+    } catch (error) {
+      spinner.fail('Operation failed');
+      displayError((error as Error).message);
+      process.exit(1);
+    }
+  });
+gcpCommand
+  .command('config')
+  .description('Configure GCP credentials')
+  .option('-p, --project-id <id>', 'GCP Project ID (single project)')
+  .option('--project-ids <ids>', 'GCP Project IDs (comma-separated for multiple projects)')
+  .option('-a, --auto-discover', 'Auto-discover all accessible GCP projects')
+  .option('-t, --token <token>', 'GCP Access Token')
+  .option('-k, --service-account-key <path>', 'Path to GCP Service Account Key JSON file')
+  .action(async (options: { projectId?: string; projectIds?: string; autoDiscover?: boolean; token?: string; serviceAccountKey?: string }) => {
+    try {
+      if (!options.projectId && !options.projectIds && !options.autoDiscover && !options.token && !options.serviceAccountKey) {
+        displayError('Please provide at least one credential option');
+        console.log(chalk.yellow('\nUsage:'));
+        console.log('  infrasee gcp config --auto-discover --token ACCESS_TOKEN  (recommended)');
+        console.log('  infrasee gcp config --auto-discover --service-account-key /path/to/key.json');
+        console.log('  infrasee gcp config --project-id PROJECT_ID --token ACCESS_TOKEN');
+        console.log('  infrasee gcp config --project-ids PROJECT1,PROJECT2 --token ACCESS_TOKEN');
+        process.exit(1);
+      }
+      const config = loadConfig();
+      let existingConfig = config;
+      if (!existingConfig) {
+        existingConfig = {};
+      }
+      if (options.autoDiscover) {
+        existingConfig.gcpAutoDiscover = true;
+        delete existingConfig.gcpProjectId;
+        delete existingConfig.gcpProjectIds;
+      } else if (options.projectIds) {
+        existingConfig.gcpProjectIds = options.projectIds.split(',').map(id => id.trim());
+        delete existingConfig.gcpProjectId;
+        delete existingConfig.gcpAutoDiscover;
+      } else if (options.projectId) {
+        existingConfig.gcpProjectId = options.projectId;
+        delete existingConfig.gcpProjectIds;
+        delete existingConfig.gcpAutoDiscover;
+      }
+      if (options.token) {
+        existingConfig.gcpAccessToken = options.token;
+      }
+      if (options.serviceAccountKey) {
+        const { readFileSync } = await import('fs');
+        try {
+          const keyContent = readFileSync(options.serviceAccountKey, 'utf-8');
+          JSON.parse(keyContent);
+          existingConfig.gcpServiceAccountKey = keyContent;
+        } catch (err) {
+          displayError('Invalid service account key file');
+          process.exit(1);
+        }
+      }
+      const spinner = ora('Testing GCP credentials...').start();
+      const { GCPAPI } = await import('./api/gcp');
+      const api = new GCPAPI(existingConfig);
+      const isValid = await api.testConnection();
+      if (!isValid) {
+        spinner.fail('Invalid credentials or project ID');
+        process.exit(1);
+      }
+      saveSecureConfig(existingConfig);
+      if (options.autoDiscover) {
+        spinner.succeed('GCP configuration saved with auto-discovery enabled');
+        displayInfo('Auto-discovery will search ALL accessible GCP projects');
+      } else {
+        spinner.succeed('GCP configuration saved successfully with encryption');
+      }
+      const configPath = join(homedir(), '.infrasee', 'config.json');
+      displayInfo(`Encrypted config saved to: ${configPath}`);
+    } catch (error) {
+      displayError((error as Error).message);
+      process.exit(1);
+    }
+  });
+gcpCommand
+  .command('test')
+  .description('Test GCP API connection')
+  .action(async () => {
+    const config = loadConfig();
+    if (!validateGCPConfig(config)) {
+      displayError('No valid GCP credentials found.');
+      console.log(chalk.yellow('\nRun "infrasee gcp config" to set up your credentials.'));
+      process.exit(1);
+    }
+    const spinner = ora('Testing connection to GCP API...').start();
+    try {
+      const { GCPAPI } = await import('./api/gcp');
+      const api = new GCPAPI(config);
+      const isConnected = await api.testConnection();
+      if (isConnected) {
+        spinner.succeed('Successfully connected to GCP API');
+        if (config.gcpProjectIds && config.gcpProjectIds.length > 0) {
+          displayInfo(`Using GCP Projects: ${config.gcpProjectIds.join(', ')}`);
+        } else {
+          displayInfo(`Using GCP Project: ${config.gcpProjectId}`);
+        }
+      } else {
+        spinner.fail('Failed to connect to GCP API');
+        displayError('Please check your credentials and project ID');
+        process.exit(1);
+      }
+    } catch (error) {
+      spinner.fail('Connection test failed');
+      displayError((error as Error).message);
+      process.exit(1);
+    }
+  });
 const allCommand = program
   .command('all')
-  .description('Search Cloudflare, Coolify, and DigitalOcean');
+  .description('Search Cloudflare, Coolify, DigitalOcean, and GCP');
 allCommand
   .command('ip')
-  .description('Find all resources from Cloudflare, Coolify, and DigitalOcean for an IP')
+  .description('Find all resources from Cloudflare, Coolify, DigitalOcean, and GCP for an IP')
   .argument('<ip>', 'IP address to search for')
   .option('-j, --json', 'Output results as JSON')
   .option('-s, --simple', 'Output simple list of domains only')
   .option('-c, --csv', 'Output as CSV format')
+  .option('-a, --all-projects', 'Search all accessible GCP projects (auto-discover)')
   .option('-o, --output <file>', 'Save results to a file')
-  .action(async (ip: string, options: { json?: boolean; simple?: boolean; csv?: boolean; output?: string }) => {
+  .action(async (ip: string, options: { json?: boolean; simple?: boolean; csv?: boolean; allProjects?: boolean; output?: string }) => {
     if (!isValidIP(ip)) {
       displayError(`Invalid IP address: ${ip}`);
       process.exit(1);
@@ -397,12 +712,16 @@ allCommand
     const hasCloudflare = validateConfig(config);
     const hasCoolify = validateCoolifyConfig(config);
     const hasDigitalOcean = validateDigitalOceanConfig(config);
-    if (!hasCloudflare && !hasCoolify && !hasDigitalOcean) {
+    // For GCP, if --all-projects is set, just check for auth credentials
+    const hasGCPAuth = !!(config.gcpAccessToken || config.gcpServiceAccountKey);
+    const hasGCP = options.allProjects ? hasGCPAuth : validateGCPConfig(config);
+
+    if (!hasCloudflare && !hasCoolify && !hasDigitalOcean && !hasGCP) {
       displayError('No valid credentials found for any service.');
       console.log(chalk.yellow('\nPlease configure at least one service:'));
       console.log(chalk.cyan('\nFor Cloudflare:'));
       console.log('  1. Set environment variable: CLOUDFLARE_API_TOKEN=your_token');
-      console.log('  2. Or run: infrasee config --token your_cloudflare_token');
+      console.log('  2. Or run: infrasee cloudflare config --token your_cloudflare_token');
       console.log(chalk.cyan('\nFor Coolify:'));
       console.log('  1. Set environment variables:');
       console.log('     COOLIFY_API_TOKEN=your_token');
@@ -411,13 +730,18 @@ allCommand
       console.log(chalk.cyan('\nFor DigitalOcean:'));
       console.log('  1. Set environment variable: DIGITALOCEAN_TOKEN=your_token');
       console.log('  2. Or run: infrasee digitalocean config --token your_digitalocean_token');
+      console.log(chalk.cyan('\nFor GCP:'));
+      console.log('  1. Set environment variables:');
+      console.log('     GCP_PROJECT_ID=your_project_id or GCP_PROJECT_IDS=project1,project2');
+      console.log('     GCP_ACCESS_TOKEN=your_token or GCP_SERVICE_ACCOUNT_KEY=path_to_key');
+      console.log('  2. Or run: infrasee gcp config --project-ids PROJECT1,PROJECT2 --token TOKEN');
       process.exit(1);
     }
-    if (!hasCloudflare || !hasCoolify || !hasDigitalOcean) {
+    if (!hasCloudflare || !hasCoolify || !hasDigitalOcean || !hasGCP) {
       console.log(chalk.yellow('\n⚠ Warning: Not all services are configured'));
       if (!hasCloudflare) {
         console.log(chalk.gray('  • Cloudflare: Not configured (skipping)'));
-        console.log(chalk.gray('    To configure: infrasee config --token your_token'));
+        console.log(chalk.gray('    To configure: infrasee cloudflare config --token your_token'));
       } else {
         console.log(chalk.green('  • Cloudflare: ✓ Configured'));
       }
@@ -433,12 +757,25 @@ allCommand
       } else {
         console.log(chalk.green('  • DigitalOcean: ✓ Configured'));
       }
+      if (!hasGCP) {
+        if (options.allProjects && !hasGCPAuth) {
+          console.log(chalk.gray('  • GCP: No authentication configured (skipping)'));
+          console.log(chalk.gray('    To configure: infrasee gcp config --auto-discover --token TOKEN'));
+        } else if (!options.allProjects) {
+          console.log(chalk.gray('  • GCP: Not configured (skipping)'));
+          console.log(chalk.gray('    To configure: infrasee gcp config --auto-discover --token TOKEN'));
+          console.log(chalk.gray('    Or use: --all-projects flag to auto-discover projects'));
+        }
+      } else {
+        console.log(chalk.green('  • GCP: ✓ Configured'));
+      }
       console.log('');
     }
     const spinner = ora('Searching for domains...').start();
     let cloudflareRecords: any[] = [];
     let coolifyResources: any[] = [];
     let digitalOceanResources: any[] = [];
+    let gcpResources: any[] = [];
     let errors: string[] = [];
     if (hasCloudflare) {
       try {
@@ -482,13 +819,32 @@ allCommand
         errors.push(`DigitalOcean: ${(error as Error).message}`);
       }
     }
+    if (hasGCP) {
+      try {
+        spinner.text = options.allProjects ? 'Searching all GCP projects...' : 'Searching GCP...';
+        const { GCPAPI } = await import('./api/gcp');
+        // Enable auto-discovery if --all-projects flag is set
+        const gcpConfig = options.allProjects
+          ? { ...config, autoDiscoverProjects: true }
+          : config;
+        const gcpApi = new GCPAPI(gcpConfig);
+        const isConnected = await gcpApi.testConnection();
+        if (isConnected) {
+          gcpResources = await gcpApi.findResourcesByIP(ip);
+        } else {
+          errors.push('Failed to connect to GCP API');
+        }
+      } catch (error) {
+        errors.push(`GCP: ${(error as Error).message}`);
+      }
+    }
     spinner.succeed('Search completed');
     if (errors.length > 0) {
       console.log(chalk.yellow('\nWarnings:'));
       errors.forEach(err => console.log(chalk.yellow(`  - ${err}`)));
     }
     if (options.csv) {
-      const combinedData = combineDomainData(ip, cloudflareRecords, coolifyResources, digitalOceanResources);
+      const combinedData = combineDomainData(ip, cloudflareRecords, coolifyResources, digitalOceanResources, gcpResources);
       const csvOutput = generateCSV(combinedData);
       if (options.output) {
         secureWriteFile(options.output, csvOutput);
@@ -497,11 +853,50 @@ allCommand
         console.log(csvOutput);
       }
     } else if (options.simple) {
-      const allDomains = new Set<string>();
-      cloudflareRecords.forEach(r => allDomains.add(r.name));
-      coolifyResources.filter(r => r.fqdn).forEach(r => allDomains.add(r.fqdn));
-      digitalOceanResources.forEach(r => allDomains.add(r.domain || r.name));
-      const simpleResult = { [ip]: Array.from(allDomains).sort() };
+      // Structured simple output organized by provider
+      const simpleResult = {
+        ip,
+        providers: [
+          {
+            name: 'cloudflare',
+            type: 'dns',
+            resources: [...new Set(cloudflareRecords.map(r => r.name))].sort()
+          },
+          {
+            name: 'coolify',
+            type: 'applications',
+            resources: [...new Set(coolifyResources.filter(r => r.fqdn).map(r => r.fqdn))].sort()
+          },
+          {
+            name: 'digitalocean',
+            type: 'infrastructure',
+            resources: [...new Set(digitalOceanResources.map(r => r.domain || r.name))].sort()
+          },
+          {
+            name: 'gcp',
+            type: 'cloud_resources',
+            resources: [...new Set(gcpResources.map(r => {
+              if (r.url) {
+                try {
+                  return new URL(r.url).hostname;
+                } catch {
+                  return r.name;
+                }
+              }
+              return r.name;
+            }))].sort()
+          }
+        ],
+        summary: {
+          total_resources: cloudflareRecords.length + coolifyResources.length + digitalOceanResources.length + gcpResources.length,
+          providers_found: [
+            cloudflareRecords.length > 0 ? 'cloudflare' : null,
+            coolifyResources.length > 0 ? 'coolify' : null,
+            digitalOceanResources.length > 0 ? 'digitalocean' : null,
+            gcpResources.length > 0 ? 'gcp' : null
+          ].filter(p => p !== null)
+        }
+      };
       const simpleOutput = JSON.stringify(simpleResult, null, 2);
       if (options.output) {
         writeFileSync(options.output, simpleOutput);
@@ -515,14 +910,17 @@ allCommand
         cloudflare: cloudflareRecords,
         coolify: coolifyResources,
         digitalocean: digitalOceanResources,
+        gcp: gcpResources,
         summary: {
           cloudflare_domains: [...new Set(cloudflareRecords.map(r => r.name))],
           coolify_domains: [...new Set(coolifyResources.filter(r => r.fqdn).map(r => r.fqdn))],
           digitalocean_resources: [...new Set(digitalOceanResources.map(r => r.name))],
+          gcp_resources: [...new Set(gcpResources.map(r => r.name))],
           total_unique_domains: new Set([
             ...cloudflareRecords.map(r => r.name),
             ...coolifyResources.filter(r => r.fqdn).map(r => r.fqdn),
-            ...digitalOceanResources.filter(r => r.domain).map(r => r.domain)
+            ...digitalOceanResources.filter(r => r.domain).map(r => r.domain),
+            ...gcpResources.filter(r => r.url).map(r => new URL(r.url).hostname)
           ]).size
         }
       };
@@ -553,25 +951,52 @@ allCommand
       } else if (hasDigitalOcean) {
         console.log(chalk.yellow('No resources found in DigitalOcean'));
       }
+      if (gcpResources.length > 0) {
+        console.log(chalk.green('\nGCP Resources:'));
+        const { displayGCPResults } = await import('./utils/displayGCP');
+        displayGCPResults(gcpResources, ip);
+      } else if (hasGCP) {
+        console.log(chalk.yellow('No resources found in GCP'));
+      }
       const uniqueDomains = new Set([
         ...cloudflareRecords.map(r => r.name),
         ...coolifyResources.filter(r => r.fqdn).map(r => r.fqdn),
-        ...digitalOceanResources.filter(r => r.domain).map(r => r.domain)
+        ...digitalOceanResources.filter(r => r.domain).map(r => r.domain),
+        ...gcpResources.filter(r => r.url).map(r => new URL(r.url).hostname)
       ]);
       console.log(chalk.cyan('\n=== Summary ==='));
       console.log(`Total unique domains: ${uniqueDomains.size}`);
       console.log(`Cloudflare domains: ${new Set(cloudflareRecords.map(r => r.name)).size}`);
       console.log(`Coolify domains: ${new Set(coolifyResources.filter(r => r.fqdn).map(r => r.fqdn)).size}`);
       console.log(`DigitalOcean resources: ${new Set(digitalOceanResources.map(r => r.name)).size}`);
+      console.log(`GCP resources: ${new Set(gcpResources.map(r => r.name)).size}`);
     }
   });
+// Deprecated commands - kept for backward compatibility
+program
+  .command('ip')
+  .description('[DEPRECATED] Use "infrasee cloudflare ip" instead')
+  .argument('<ip>', 'IP address to search for')
+  .option('-j, --json', 'Output results as JSON')
+  .option('-s, --simple', 'Output simple list of domains only')
+  .option('-o, --output <file>', 'Save results to a file')
+  .action(async (ip: string, options: { json?: boolean; simple?: boolean; output?: string }) => {
+    console.log(chalk.yellow('\n⚠️  Warning: "infrasee ip" is deprecated and will be removed in v2.0.0'));
+    console.log(chalk.yellow('   Please use "infrasee cloudflare ip" instead\n'));
+    // Delegate to the cloudflare ip function
+    await handleCloudflareIPSearch(ip, options);
+  });
+
 program
   .command('config')
-  .description('Configure Cloudflare API credentials')
+  .description('[DEPRECATED] Use "infrasee cloudflare config" instead')
   .option('--token <token>', 'Cloudflare API Token')
   .option('--email <email>', 'Cloudflare account email')
   .option('--key <key>', 'Cloudflare Global API Key')
   .action(async (options: { token?: string; email?: string; key?: string }) => {
+    console.log(chalk.yellow('\n⚠️  Warning: "infrasee config" is deprecated and will be removed in v2.0.0'));
+    console.log(chalk.yellow('   Please use "infrasee cloudflare config" instead\n'));
+    // Run the same logic as cloudflare config
     const configDir = join(homedir(), '.infrasee');
     const configPath = join(configDir, 'config.json');
     try {
@@ -606,12 +1031,15 @@ program
   });
 program
   .command('test')
-  .description('Test Cloudflare API connection')
+  .description('[DEPRECATED] Use "infrasee cloudflare test" instead')
   .action(async () => {
+    console.log(chalk.yellow('\n⚠️  Warning: "infrasee test" is deprecated and will be removed in v2.0.0'));
+    console.log(chalk.yellow('   Please use "infrasee cloudflare test" instead\n'));
+    // Run the same logic as cloudflare test
     const config = loadConfig();
     if (!validateConfig(config)) {
       displayError('No valid Cloudflare credentials found.');
-      console.log(chalk.yellow('\nRun "infrasee config" to set up your credentials.'));
+      console.log(chalk.yellow('\nRun "infrasee cloudflare config" to set up your credentials.'));
       process.exit(1);
     }
     const spinner = ora('Testing connection to Cloudflare API...').start();
@@ -620,11 +1048,7 @@ program
       const isConnected = await api.testConnection();
       if (isConnected) {
         spinner.succeed('Successfully connected to Cloudflare API');
-        if (config.cloudflareApiToken) {
-          displayInfo('Using API Token authentication');
-        } else {
-          displayInfo('Using Email + API Key authentication');
-        }
+        displayInfo('Using Cloudflare API v4');
       } else {
         spinner.fail('Failed to connect to Cloudflare API');
         displayError('Please check your credentials');

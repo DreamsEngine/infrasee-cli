@@ -51,6 +51,11 @@ export interface Config {
   coolifyApiToken?: string;
   coolifyUrl?: string;
   digitalOceanToken?: string;
+  gcpProjectId?: string;
+  gcpProjectIds?: string[];
+  gcpAutoDiscover?: boolean;
+  gcpAccessToken?: string;
+  gcpServiceAccountKey?: string;
 }
 export function loadConfig(): Config {
   const config: Config = {};
@@ -60,6 +65,13 @@ export function loadConfig(): Config {
   config.coolifyApiToken = process.env.COOLIFY_API_TOKEN;
   config.coolifyUrl = process.env.COOLIFY_URL;
   config.digitalOceanToken = process.env.DIGITALOCEAN_TOKEN;
+  config.gcpProjectId = process.env.GCP_PROJECT_ID;
+  if (process.env.GCP_PROJECT_IDS) {
+    config.gcpProjectIds = process.env.GCP_PROJECT_IDS.split(',').map(id => id.trim());
+  }
+  config.gcpAutoDiscover = process.env.GCP_AUTO_DISCOVER === 'true';
+  config.gcpAccessToken = process.env.GCP_ACCESS_TOKEN;
+  config.gcpServiceAccountKey = process.env.GCP_SERVICE_ACCOUNT_KEY;
   const configPath = join(homedir(), '.infrasee', 'config.json');
   if (existsSync(configPath)) {
     try {
@@ -83,6 +95,22 @@ export function loadConfig(): Config {
       if (!config.digitalOceanToken && fileConfig.digitalOceanToken) {
         config.digitalOceanToken = isEncrypted ? decryptData(fileConfig.digitalOceanToken) : fileConfig.digitalOceanToken;
       }
+      if (!config.gcpProjectId && fileConfig.gcpProjectId) {
+        config.gcpProjectId = isEncrypted ? decryptData(fileConfig.gcpProjectId) : fileConfig.gcpProjectId;
+      }
+      if (!config.gcpProjectIds && fileConfig.gcpProjectIds) {
+        if (isEncrypted && typeof fileConfig.gcpProjectIds === 'string') {
+          config.gcpProjectIds = JSON.parse(decryptData(fileConfig.gcpProjectIds));
+        } else {
+          config.gcpProjectIds = fileConfig.gcpProjectIds;
+        }
+      }
+      if (!config.gcpAccessToken && fileConfig.gcpAccessToken) {
+        config.gcpAccessToken = isEncrypted ? decryptData(fileConfig.gcpAccessToken) : fileConfig.gcpAccessToken;
+      }
+      if (!config.gcpServiceAccountKey && fileConfig.gcpServiceAccountKey) {
+        config.gcpServiceAccountKey = isEncrypted ? decryptData(fileConfig.gcpServiceAccountKey) : fileConfig.gcpServiceAccountKey;
+      }
     } catch (error) {
     }
   }
@@ -102,6 +130,11 @@ export function validateCoolifyConfig(config: Config): boolean {
 }
 export function validateDigitalOceanConfig(config: Config): boolean {
   return !!config.digitalOceanToken;
+}
+export function validateGCPConfig(config: Config): boolean {
+  const hasProjects = !!(config.gcpProjectId || (config.gcpProjectIds && config.gcpProjectIds.length > 0) || config.gcpAutoDiscover);
+  const hasAuth = !!(config.gcpAccessToken || config.gcpServiceAccountKey);
+  return hasProjects && hasAuth;
 }
 export function saveSecureConfig(config: Config): void {
   const configDir = join(homedir(), '.infrasee');
@@ -164,6 +197,32 @@ export function saveSecureConfig(config: Config): void {
       : encryptData(config.digitalOceanToken);
   } else if (existingConfig.digitalOceanToken) {
     secureConfig.digitalOceanToken = existingConfig.digitalOceanToken;
+  }
+  if (config.gcpProjectId) {
+    secureConfig.gcpProjectId = isEncrypted(config.gcpProjectId)
+      ? config.gcpProjectId
+      : encryptData(config.gcpProjectId);
+  } else if (existingConfig.gcpProjectId) {
+    secureConfig.gcpProjectId = existingConfig.gcpProjectId;
+  }
+  if (config.gcpProjectIds) {
+    secureConfig.gcpProjectIds = encryptData(JSON.stringify(config.gcpProjectIds));
+  } else if (existingConfig.gcpProjectIds) {
+    secureConfig.gcpProjectIds = existingConfig.gcpProjectIds;
+  }
+  if (config.gcpAccessToken) {
+    secureConfig.gcpAccessToken = isEncrypted(config.gcpAccessToken)
+      ? config.gcpAccessToken
+      : encryptData(config.gcpAccessToken);
+  } else if (existingConfig.gcpAccessToken) {
+    secureConfig.gcpAccessToken = existingConfig.gcpAccessToken;
+  }
+  if (config.gcpServiceAccountKey) {
+    secureConfig.gcpServiceAccountKey = isEncrypted(config.gcpServiceAccountKey)
+      ? config.gcpServiceAccountKey
+      : encryptData(config.gcpServiceAccountKey);
+  } else if (existingConfig.gcpServiceAccountKey) {
+    secureConfig.gcpServiceAccountKey = existingConfig.gcpServiceAccountKey;
   }
   writeFileSync(configPath, JSON.stringify(secureConfig, null, 2), { mode: 0o600 });
 }

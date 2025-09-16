@@ -1,6 +1,6 @@
 {
   "name": "infrasee-cli",
-  "version": "1.3.0",
+  "version": "1.5.4",
   "description": "CLI tool to find all domains and resources using a specific IP address across multiple cloud providers",
   "main": "dist/cli.js",
   "bin": {
@@ -16,8 +16,19 @@
     "prepublishOnly": "npm run build",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["cli", "cloudflare", "digitalocean", "coolify", "infrastructure", "ip", "dns", "devops"],
-  "author": "Andres Lopez & Adrian Galvez <lab@dreamsengine.com>",
+  "keywords": [
+    "cli",
+    "cloudflare",
+    "digitalocean",
+    "coolify",
+    "gcp",
+    "google-cloud",
+    "infrastructure",
+    "ip",
+    "dns",
+    "devops"
+  ],
+  "author": "Dreams Engine Team",
   "license": "MIT",
   "repository": {
     "type": "git",
