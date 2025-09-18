@@ -1,3 +1,5 @@
+import { debug } from './debug';
+
 export interface HttpClientOptions {
   baseURL?: string;
   headers?: Record<string, string>;
@@ -14,7 +16,7 @@ export class HttpClient {
   constructor(options: HttpClientOptions = {}) {
     this.baseURL = options.baseURL || '';
     this.defaultHeaders = options.headers || {};
-    this.timeout = options.timeout || 30000; 
+    this.timeout = options.timeout || 30000;
   }
   private buildURL(path: string, params?: Record<string, string | number | boolean>): string {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -64,14 +66,25 @@ export class HttpClient {
         ...(fetchOptions.headers as Record<string, string> || {}),
       },
     };
+
+    // Log API request
+    const method = mergedOptions.method || 'GET';
+    debug.logApiRequest(method, url, mergedOptions.headers, mergedOptions.body);
+
+    const startTime = Date.now();
     try {
       const response = await this.fetchWithTimeout(url, mergedOptions, timeout);
+      const responseTime = Date.now() - startTime;
+
       if (!response.ok) {
         const errorBody = await response.text();
+        debug.logApiResponse(response.status, url, responseTime, errorBody);
+
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         try {
           const errorJson = JSON.parse(errorBody);
           errorMessage = errorJson.message || errorJson.error || errorMessage;
+          debug.log('error', `API Error: ${errorMessage}`, errorJson);
         } catch {
           if (errorBody) {
             errorMessage = errorBody;
@@ -79,12 +92,22 @@ export class HttpClient {
         }
         throw new Error(errorMessage);
       }
+
       const contentType = response.headers.get('content-type');
+      let responseData: any;
+
       if (contentType && contentType.includes('application/json')) {
-        return await response.json();
+        responseData = await response.json();
+      } else {
+        responseData = await response.text();
       }
-      return await response.text() as any;
+
+      debug.logApiResponse(response.status, url, responseTime, responseData);
+      return responseData;
     } catch (error) {
+      const responseTime = Date.now() - startTime;
+      debug.log('error', `Request failed after ${responseTime}ms: ${(error as Error).message}`);
+
       if (error instanceof Error) {
         throw error;
       }

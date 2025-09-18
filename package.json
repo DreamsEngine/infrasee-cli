@@ -1,6 +1,6 @@
 {
   "name": "infrasee-cli",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "CLI tool to find all domains and resources using a specific IP address across multiple cloud providers",
   "main": "dist/cli.js",
   "bin": {

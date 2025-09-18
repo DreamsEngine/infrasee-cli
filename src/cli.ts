@@ -16,6 +16,7 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
 import { mkdirSync } from 'fs';
+import { debug } from './utils/debug';
 const program = new Command();
 function secureWriteFile(filePath: string, content: string): void {
   try {
@@ -26,19 +27,68 @@ function secureWriteFile(filePath: string, content: string): void {
     process.exit(1);
   }
 }
+const VERSION = '1.5.5';
+
+function displayVersion() {
+  console.log(chalk.cyan('╭────────────────────────────────────────╮'));
+  console.log(chalk.cyan('│') + chalk.white.bold('         InfraSee CLI Tool              ') + chalk.cyan('│'));
+  console.log(chalk.cyan('├────────────────────────────────────────┤'));
+  console.log(chalk.cyan('│') + chalk.gray('  Version:    ') + chalk.green.bold(VERSION.padEnd(26)) + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + chalk.gray('  Node:       ') + chalk.blue(process.version.padEnd(26)) + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + chalk.gray('  Platform:   ') + chalk.blue(process.platform.padEnd(26)) + chalk.cyan('│'));
+  console.log(chalk.cyan('├────────────────────────────────────────┤'));
+  console.log(chalk.cyan('│') + chalk.gray('  Providers:                            ') + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + chalk.white('    • Cloudflare DNS                    ') + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + chalk.white('    • Coolify Apps                      ') + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + chalk.white('    • DigitalOcean                      ') + chalk.cyan('│'));
+  console.log(chalk.cyan('│') + chalk.white('    • Google Cloud Platform             ') + chalk.cyan('│'));
+  console.log(chalk.cyan('╰────────────────────────────────────────╯'));
+  console.log();
+  console.log(chalk.gray('  Repository: ') + chalk.blue('github.com/DreamsEngine/infrasee-cli'));
+  console.log(chalk.gray('  License:    ') + chalk.green('MIT'));
+}
+
 program
   .name('infrasee')
   .description('CLI tool to find all domains and resources using a specific IP address across multiple cloud providers')
-  .version('1.5.4');
+  .version(VERSION, '-v, --version', 'Display version information')
+  .option('-d, --debug', 'Enable debug mode with verbose logging')
+  .configureOutput({
+    outputError: (str, write) => write(chalk.red(str)),
+    writeOut: (str) => {
+      if (str === VERSION + '\n') {
+        displayVersion();
+      } else {
+        process.stdout.write(str);
+      }
+    }
+  })
+  .helpOption('-h, --help', 'Display help')
+  .addHelpText('afterAll', '\n' + chalk.gray('For more information, visit: https://github.com/DreamsEngine/infrasee-cli'))
+  .hook('preAction', (thisCommand) => {
+    const options = thisCommand.opts();
+    if (options.debug) {
+      debug.setDebugMode(true);
+      debug.log('info', `Executing command: ${thisCommand.args.join(' ')}`);
+    }
+  });
 
 // Helper function for Cloudflare IP search
 async function handleCloudflareIPSearch(ip: string, options: { json?: boolean; simple?: boolean; output?: string }) {
+    debug.log('info', `Starting Cloudflare IP search for: ${ip}`);
+    debug.startTimer('cloudflare-search');
+
     if (!isValidIP(ip)) {
+      debug.log('error', `Invalid IP address: ${ip}`);
       displayError(`Invalid IP address: ${ip}`);
       process.exit(1);
     }
+
+    debug.log('debug', 'Loading configuration...');
     const config = loadConfig();
+
     if (!validateConfig(config)) {
+      debug.log('error', 'No valid Cloudflare credentials found');
       displayError('No valid Cloudflare credentials found.');
       console.log(chalk.yellow('\nPlease configure your credentials using one of these methods:\n'));
       console.log('1. Set environment variables:');
@@ -48,19 +98,37 @@ async function handleCloudflareIPSearch(ip: string, options: { json?: boolean; s
       console.log('3. Run: infrasee cloudflare config');
       process.exit(1);
     }
-    const spinner = ora('Connecting to Cloudflare API...').start();
+
+    debug.log('info', 'Credentials loaded, initializing Cloudflare API client');
+    const spinner = debug.isDebugMode() ? null : ora('Connecting to Cloudflare API...').start();
+
     try {
       const api = new CloudflareAPI(config);
-      spinner.text = 'Verifying credentials...';
+
+      if (spinner) spinner.text = 'Verifying credentials...';
+      debug.log('info', 'Testing connection to Cloudflare API...');
+      debug.startTimer('cloudflare-auth');
+
       const isConnected = await api.testConnection();
+      debug.endTimer('cloudflare-auth');
+
       if (!isConnected) {
-        spinner.fail('Failed to authenticate with Cloudflare API');
+        if (spinner) spinner.fail('Failed to authenticate with Cloudflare API');
+        debug.log('error', 'Authentication failed');
         displayError('Please check your credentials');
         process.exit(1);
       }
-      spinner.text = `Searching for domains using IP ${ip}...`;
+
+      debug.log('info', 'Authentication successful, searching for domains...');
+      if (spinner) spinner.text = `Searching for domains using IP ${ip}...`;
+      debug.startTimer('cloudflare-domain-search');
+
       const records = await api.findDomainsByIP(ip);
-      spinner.succeed('Search completed');
+      debug.endTimer('cloudflare-domain-search');
+      debug.log('info', `Found ${records.length} DNS records`);
+      debug.endTimer('cloudflare-search');
+
+      if (spinner) spinner.succeed('Search completed');
       if (options.simple) {
         const domains = [...new Set(records.map(r => r.name))].sort();
         const simpleResult = {
@@ -97,8 +165,17 @@ async function handleCloudflareIPSearch(ip: string, options: { json?: boolean; s
         }
       }
     } catch (error) {
-      spinner.fail('Operation failed');
+      if (spinner) spinner.fail('Operation failed');
+      debug.logError(error as Error, 'Cloudflare search failed');
       displayError((error as Error).message);
+
+      if (debug.isDebugMode()) {
+        const logPath = debug.exportDebugLog();
+        console.error(chalk.gray(`\n📝 Debug log saved to: ${logPath}`));
+        console.error(chalk.gray(`💡 ${debug.getSummary()}`));
+        console.error(chalk.yellow('\nPlease include this debug log when reporting issues at:'));
+        console.error(chalk.blue('https://github.com/DreamsEngine/infrasee-cli/issues'));
+      }
       process.exit(1);
     }
 }
@@ -114,7 +191,15 @@ cloudflareCommand
   .option('-j, --json', 'Output results as JSON')
   .option('-s, --simple', 'Output simple list of domains only')
   .option('-o, --output <file>', 'Save results to a file')
-  .action(handleCloudflareIPSearch);
+  .option('-d, --debug', 'Enable debug mode with verbose logging')
+  .action((ip, options) => {
+    // Pass debug flag from parent command or local option
+    const parentOptions = program.opts();
+    if (parentOptions.debug || options.debug) {
+      debug.setDebugMode(true);
+    }
+    handleCloudflareIPSearch(ip, options);
+  });
 
 cloudflareCommand
   .command('config')
@@ -506,11 +591,17 @@ gcpCommand
     if (!validateGCPConfig(config)) {
       displayError('No valid GCP credentials found.');
       console.log(chalk.yellow('\nPlease configure GCP credentials:'));
-      console.log('1. Set environment variables:');
-      console.log('   - GCP_PROJECT_ID or GCP_PROJECT_IDS (comma-separated)');
-      console.log('   - GCP_ACCESS_TOKEN or GCP_SERVICE_ACCOUNT_KEY');
-      console.log('2. Add to .env file in the current directory\n');
-      console.log('3. Run: infrasee gcp config');
+      console.log(chalk.cyan('\n📌 For long-term use (Recommended):'));
+      console.log('   Use a service account key:');
+      console.log(chalk.white('   infrasee gcp config --auto-discover --service-account-key /path/to/key.json'));
+      console.log(chalk.gray('   Service account keys don\'t expire and work across sessions'));
+      console.log(chalk.yellow('\n⏱️  For temporary use (expires in ~1 hour):'));
+      console.log('   Use gcloud access token:');
+      console.log(chalk.white('   infrasee gcp config --auto-discover --token "$(gcloud auth print-access-token)"'));
+      console.log(chalk.gray('   Note: This token will expire and needs regular refresh'));
+      console.log(chalk.blue('\n💡 Tip: You can also set environment variables in .env file:'));
+      console.log('   GCP_SERVICE_ACCOUNT_KEY=/path/to/key.json');
+      console.log('   GCP_ACCESS_TOKEN=$(gcloud auth print-access-token)');
       process.exit(1);
     }
     const spinner = ora('Connecting to GCP API...').start();
@@ -591,16 +682,21 @@ gcpCommand
   .option('-p, --project-id <id>', 'GCP Project ID (single project)')
   .option('--project-ids <ids>', 'GCP Project IDs (comma-separated for multiple projects)')
   .option('-a, --auto-discover', 'Auto-discover all accessible GCP projects')
-  .option('-t, --token <token>', 'GCP Access Token')
-  .option('-k, --service-account-key <path>', 'Path to GCP Service Account Key JSON file')
+  .option('-t, --token <token>', 'GCP Access Token (expires in ~1 hour)')
+  .option('-k, --service-account-key <path>', 'Path to GCP Service Account Key JSON file (recommended for long-term use)')
   .action(async (options: { projectId?: string; projectIds?: string; autoDiscover?: boolean; token?: string; serviceAccountKey?: string }) => {
     try {
       if (!options.projectId && !options.projectIds && !options.autoDiscover && !options.token && !options.serviceAccountKey) {
         displayError('Please provide at least one credential option');
         console.log(chalk.yellow('\nUsage:'));
-        console.log('  infrasee gcp config --auto-discover --token ACCESS_TOKEN  (recommended)');
+        console.log(chalk.cyan('\n📌 For long-term use (Recommended):'));
         console.log('  infrasee gcp config --auto-discover --service-account-key /path/to/key.json');
-        console.log('  infrasee gcp config --project-id PROJECT_ID --token ACCESS_TOKEN');
+        console.log(chalk.gray('  Service account keys don\'t expire and work across sessions\n'));
+        console.log(chalk.yellow('⏱️  For temporary use (expires in ~1 hour):'));
+        console.log('  infrasee gcp config --auto-discover --token "$(gcloud auth print-access-token)"');
+        console.log(chalk.gray('  Access tokens from gcloud expire and need to be refreshed\n'));
+        console.log('Examples:');
+        console.log('  infrasee gcp config --project-id PROJECT_ID --service-account-key key.json');
         console.log('  infrasee gcp config --project-ids PROJECT1,PROJECT2 --token ACCESS_TOKEN');
         process.exit(1);
       }
@@ -624,6 +720,10 @@ gcpCommand
       }
       if (options.token) {
         existingConfig.gcpAccessToken = options.token;
+        console.log(chalk.yellow('\n⚠️  Important: Access tokens expire in approximately 1 hour'));
+        console.log(chalk.yellow('   You will need to refresh the token with:'));
+        console.log(chalk.cyan('   infrasee gcp config --token "$(gcloud auth print-access-token)"'));
+        console.log(chalk.gray('\n   For long-term use, consider using a service account key instead.'));
       }
       if (options.serviceAccountKey) {
         const { readFileSync } = await import('fs');
@@ -631,6 +731,7 @@ gcpCommand
           const keyContent = readFileSync(options.serviceAccountKey, 'utf-8');
           JSON.parse(keyContent);
           existingConfig.gcpServiceAccountKey = keyContent;
+          console.log(chalk.green('\n✓ Using service account key - no expiration, works across sessions'));
         } catch (err) {
           displayError('Invalid service account key file');
           process.exit(1);
@@ -642,6 +743,10 @@ gcpCommand
       const isValid = await api.testConnection();
       if (!isValid) {
         spinner.fail('Invalid credentials or project ID');
+        if (options.token) {
+          console.log(chalk.yellow('\n💡 If authentication failed, your token may have expired.'));
+          console.log(chalk.yellow('   Generate a new one with: gcloud auth print-access-token'));
+        }
         process.exit(1);
       }
       saveSecureConfig(existingConfig);
@@ -731,10 +836,10 @@ allCommand
       console.log('  1. Set environment variable: DIGITALOCEAN_TOKEN=your_token');
       console.log('  2. Or run: infrasee digitalocean config --token your_digitalocean_token');
       console.log(chalk.cyan('\nFor GCP:'));
-      console.log('  1. Set environment variables:');
-      console.log('     GCP_PROJECT_ID=your_project_id or GCP_PROJECT_IDS=project1,project2');
-      console.log('     GCP_ACCESS_TOKEN=your_token or GCP_SERVICE_ACCOUNT_KEY=path_to_key');
-      console.log('  2. Or run: infrasee gcp config --project-ids PROJECT1,PROJECT2 --token TOKEN');
+      console.log('  📌 Recommended (long-term):');
+      console.log('     infrasee gcp config --auto-discover --service-account-key /path/to/key.json');
+      console.log('  ⏱️  Temporary (expires ~1 hour):');
+      console.log('     infrasee gcp config --auto-discover --token "$(gcloud auth print-access-token)"');
       process.exit(1);
     }
     if (!hasCloudflare || !hasCoolify || !hasDigitalOcean || !hasGCP) {

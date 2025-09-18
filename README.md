@@ -1,8 +1,33 @@
-# InfraSee CLI v1.5.4
+# InfraSee CLI v1.5.5
 
-CLI tool to find domains and cloud resources using a specific IP address across multiple providers: Cloudflare, Coolify, DigitalOcean, and Google Cloud Platform.
+🔍 **Multi-cloud infrastructure search tool** - Find all domains and resources using a specific IP address across multiple cloud providers.
+
+## Supported Providers
+
+| Provider | Resources Searched | Status |
+|----------|-------------------|---------|
+| **Cloudflare** | DNS Records, Zones | ✅ Active |
+| **Coolify** | Applications, Domains | ✅ Active |
+| **DigitalOcean** | Droplets, Load Balancers, Floating IPs | ✅ Active |
+| **Google Cloud** | Compute Engine, Cloud Run, GKE, Load Balancers | ✅ Active |
+| **Hetzner** | Cloud Servers, Floating IPs, Load Balancers | 🚧 Planned |
+| **AWS** | EC2, ELB, Route53, CloudFront | 🚧 Planned |
+| **Azure** | VMs, Public IPs, DNS, Load Balancers | 🚧 Planned |
+| **Huawei Cloud** | ECS, EIP, ELB | 🚧 Planned |
 
 ## What's New
+
+### v1.5.5 (Latest)
+- **Debug Mode**: Added comprehensive debugging capabilities with `--debug` flag
+  - Verbose API request/response logging with sanitized credentials
+  - Performance timing for all operations
+  - Automatic debug log export to `~/.infrasee/debug/`
+  - Detailed error stack traces for troubleshooting
+- **Improved Version Display**: Clean terminal table format with provider information
+- **GCP Authentication Transparency**: Clear warnings about token expiration
+  - Access tokens from `gcloud auth print-access-token` expire in ~1 hour
+  - Added recommendations for service account keys for long-term use
+  - Updated all error messages with helpful authentication guidance
 
 ### v1.5.4
 - **All Command GCP Auto-Discovery**: The `all` command now supports GCP auto-discovery
@@ -46,11 +71,14 @@ CLI tool to find domains and cloud resources using a specific IP address across 
 
 ## Features
 
-- Search multiple cloud providers simultaneously
-- Export results as JSON, CSV, or simple text
-- Encrypted credential storage
-- Support for environment variables and .env files
-- Colored terminal output with progress indicators
+- 🔍 Search multiple cloud providers simultaneously
+- 📊 Export results as JSON, CSV, or simple text
+- 🔐 Encrypted credential storage with AES-256
+- 🐛 Debug mode for troubleshooting and performance analysis
+- ⚡ Auto-discovery for GCP projects
+- 🎨 Colored terminal output with progress indicators
+- 📝 Support for environment variables and .env files
+- ⏱️ Performance monitoring and timing information
 
 ## Quick Start
 
@@ -67,13 +95,26 @@ npm install && npm run build && npm link
 echo "CLOUDFLARE_API_TOKEN=your_token" >> .env
 echo "COOLIFY_API_TOKEN=your_token" >> .env
 echo "DIGITALOCEAN_TOKEN=your_token" >> .env
+
+# For GCP (choose one):
+# Option A: Service Account Key (Recommended - no expiration)
+echo "GCP_SERVICE_ACCOUNT_KEY=/path/to/service-account-key.json" >> .env
 echo "GCP_AUTO_DISCOVER=true" >> .env
+
+# Option B: Access Token (Temporary - expires in ~1 hour)
 echo "GCP_ACCESS_TOKEN=$(gcloud auth print-access-token)" >> .env
+echo "GCP_AUTO_DISCOVER=true" >> .env
 
 # Method 2: Using interactive config
 infrasee cloudflare config --token "your_cloudflare_token"
 infrasee coolify config --token "your_coolify_token" --url "https://your-coolify.com"
 infrasee digitalocean config --token "your_do_token"
+
+# For GCP (choose one):
+# Recommended: Service Account Key (works permanently)
+infrasee gcp config --auto-discover --service-account-key /path/to/key.json
+
+# Temporary: Access Token (expires in ~1 hour, needs refresh)
 infrasee gcp config --auto-discover --token "$(gcloud auth print-access-token)"
 
 # Search for domains across all providers
@@ -204,20 +245,22 @@ COOLIFY_URL=https://your-coolify-instance.com
 DIGITALOCEAN_TOKEN=your_digitalocean_api_token_here
 
 # GCP Configuration
-# Option 1: Auto-discover all projects (recommended)
+# ⚠️ IMPORTANT: Choose between Service Account Key OR Access Token
+
+# Option A: Service Account Key (RECOMMENDED - Permanent)
+# Works across sessions, no expiration, ideal for automation
 GCP_AUTO_DISCOVER=true
-GCP_ACCESS_TOKEN=your_access_token
-# OR use Service Account key
 GCP_SERVICE_ACCOUNT_KEY=/path/to/service-account-key.json
 
-# Option 2: Manually specify projects
-# Single project
-GCP_PROJECT_ID=your_project_id
-# OR multiple projects (comma-separated)
-GCP_PROJECT_IDS=project-1,project-2,project-3
-GCP_ACCESS_TOKEN=your_access_token
-# OR use Service Account key
-GCP_SERVICE_ACCOUNT_KEY=/path/to/service-account-key.json
+# Option B: Access Token (TEMPORARY - Expires in ~1 hour)
+# Requires refresh: export GCP_ACCESS_TOKEN=$(gcloud auth print-access-token)
+GCP_AUTO_DISCOVER=true
+GCP_ACCESS_TOKEN=ya29.a0AfH6SMBxxxxxxx...  # From: gcloud auth print-access-token
+
+# You can also specify projects manually:
+# GCP_PROJECT_ID=single-project
+# OR
+# GCP_PROJECT_IDS=project-1,project-2,project-3
 ```
 
 #### Method 3: Interactive Configuration
@@ -232,17 +275,20 @@ infrasee coolify config --token "your_coolify_token" --url https://your-coolify.
 # Configure DigitalOcean
 infrasee digitalocean config --token "your_digitalocean_token"
 
-# Configure GCP with auto-discovery (recommended - searches ALL accessible projects)
-infrasee gcp config --auto-discover --token "your_access_token"
-# OR with Service Account key
+# Configure GCP - CHOOSE ONE METHOD:
+
+# 📌 RECOMMENDED: Service Account Key (Permanent, no expiration)
 infrasee gcp config --auto-discover --service-account-key /path/to/key.json
 
-# Configure GCP with manual project selection
-infrasee gcp config --project-id "my-project-123" --token "your_access_token"
-# OR configure multiple projects manually
-infrasee gcp config --project-ids "project-1,project-2,project-3" --token "your_access_token"
-# OR with Service Account key
+# ⏱️ TEMPORARY: Access Token (Expires in ~1 hour, needs refresh)
+infrasee gcp config --auto-discover --token "$(gcloud auth print-access-token)"
+# Note: You'll need to refresh the token periodically:
+#   infrasee gcp config --token "$(gcloud auth print-access-token)"
+
+# Manual project selection (if not using auto-discovery):
 infrasee gcp config --project-id "my-project-123" --service-account-key /path/to/key.json
+# OR multiple projects:
+infrasee gcp config --project-ids "project-1,project-2" --service-account-key /path/to/key.json
 ```
 
 Credentials are saved securely in `~/.infrasee/config.json`
@@ -329,6 +375,27 @@ infrasee gcp ip 35.190.247.123 --json --output gcp-resources.json
 infrasee gcp test
 ```
 
+#### GCP Authentication - Important Notes
+
+**⚠️ Access Token vs Service Account Key:**
+
+| Method | Duration | Use Case | Command |
+|--------|----------|----------|---------|
+| **Service Account Key** | ✅ Permanent | Production, Automation, CI/CD | `--service-account-key /path/to/key.json` |
+| **Access Token** | ⏱️ ~1 hour | Testing, Development | `--token "$(gcloud auth print-access-token)"` |
+
+**Why does the access token expire?**
+- Google Cloud access tokens from `gcloud auth print-access-token` are short-lived for security
+- They typically expire after 1 hour
+- You'll see authentication errors when the token expires
+- Must refresh with: `infrasee gcp config --token "$(gcloud auth print-access-token)"`
+
+**Recommended Setup for Production:**
+1. Create a service account in GCP Console
+2. Download the JSON key file
+3. Use: `infrasee gcp config --auto-discover --service-account-key /path/to/key.json`
+4. This works permanently without any refresh needed
+
 #### GCP Auto-Discovery (Recommended)
 
 The `--all-projects` flag automatically discovers and searches ALL GCP projects your service account has access to. **No need to manually list project IDs!**
@@ -370,6 +437,52 @@ infrasee digitalocean test
 
 # Test GCP connection
 infrasee gcp test
+```
+
+### Debug Mode 🐛
+
+Enable verbose debug logging to troubleshoot issues or report bugs:
+
+```bash
+# Enable debug mode for any command with --debug or -d
+infrasee cloudflare ip 1.1.1.1 --debug
+infrasee all ip 192.168.1.1 -d
+infrasee gcp test --debug
+
+# Debug mode shows:
+# - API request/response details (with sanitized credentials)
+# - Timing information for each operation
+# - Detailed error messages and stack traces
+# - Network timeouts and connection issues
+# - Configuration loading steps
+```
+
+**What Debug Mode Provides:**
+- 🌐 **API Calls**: Full request/response logging (credentials sanitized)
+- ⏱️ **Performance**: Timing for each operation to identify bottlenecks
+- 📊 **Statistics**: Summary of API calls, errors, and warnings
+- 📝 **Debug Logs**: Automatically saved to `~/.infrasee/debug/` for bug reports
+- 🔍 **Error Details**: Complete stack traces and error context
+
+**When to Use Debug Mode:**
+- Commands are taking too long without feedback
+- Getting unexpected errors or empty results
+- Reporting bugs to the development team
+- Troubleshooting authentication issues
+- Monitoring API rate limits or timeouts
+
+**Example Debug Output:**
+```
+[0.005s] ℹ️  INFO  Starting Cloudflare IP search for: 1.1.1.1
+[0.008s] 🌐 API   GET https://api.cloudflare.com/client/v4/user/tokens/verify
+[0.228s] 🌐 API   Response 200 from https://api.cloudflare.com/client/v4/user/tokens/verify (217ms)
+[0.230s] ℹ️  INFO  Authentication successful, searching for domains...
+[1.456s] 🌐 API   GET https://api.cloudflare.com/client/v4/zones?per_page=50
+[2.001s] 🌐 API   Response 200 from https://api.cloudflare.com/client/v4/zones (545ms)
+[2.002s] ℹ️  INFO  Found 12 zones to search
+...
+📝 Debug log saved to: ~/.infrasee/debug/debug-2024-01-15T10-30-45.log
+💡 Debug Summary: Total time: 5.234s | API calls: 15 | Errors: 0 | Warnings: 0
 ```
 
 ### Get Help
@@ -670,23 +783,42 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 ## Roadmap
 
-### Next Release (v1.6.0)
-- **Huawei Cloud integration**
+### Future Versions
+
+#### Next Priority Providers
+- **Hetzner Cloud**
+  - Cloud Servers and dedicated servers
+  - Floating IPs
+  - Load Balancers
+  - Networks and Firewalls
+
+#### Additional Cloud Provider Integrations
+- **Huawei Cloud**
   - Search Elastic Cloud Server (ECS) instances
   - Search Elastic IPs (EIP)
-  - Search Elastic Load Balancers (ELB)
-  - Search Cloud Container Engine (CCE) clusters
-  - Search DNS records
-  - Authentication via Access Key ID (AK) / Secret Access Key (SK)
+  - Virtual Private Cloud (VPC) resources
+  - Elastic Load Balancers (ELB)
+- **Alibaba Cloud**
+  - ECS instances and Elastic IPs
+  - Server Load Balancer resources
+- **Oracle Cloud Infrastructure (OCI)**
+  - Compute instances
+  - Load balancers and public IPs
 
-### Future Releases
-- Hetzner Cloud integration
-- AWS integration
-  - EC2 instances
-  - Elastic IPs
+#### Feature Enhancements
+- **Parallel Processing**: Faster searches with concurrent API calls
+- **Caching System**: Reduce API calls with intelligent caching
+- **Export Templates**: Custom output formats and reports
+- **CI/CD Integration**: GitHub Actions and Jenkins plugins
+- **Web Dashboard**: Browser-based interface for results visualization
+
+#### Major Platform Integrations (Planned)
+- **Amazon Web Services (AWS)**
+  - EC2 instances and Elastic IPs
   - Route53 DNS records
-  - Application Load Balancers
-- Azure integration
+  - Application/Network Load Balancers
+  - CloudFront distributions
+- **Microsoft Azure**
   - Virtual Machines
   - Public IPs
   - Azure DNS
